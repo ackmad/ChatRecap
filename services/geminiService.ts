@@ -1,11 +1,11 @@
-import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 import { Message, AnalysisResult } from "../types";
-import { SYSTEM_INSTRUCTION_CHAT, GEMINI_MODEL_TEXT } from "../constants";
+import { SYSTEM_INSTRUCTION_CHAT, SYSTEM_INSTRUCTION_ANALYSIS, GEMINI_MODEL_TEXT } from "../constants";
 
-// Helper to format chat for AI context with smarter sampling
+// --- FORMATTER HELPER ---
 const formatChatForPrompt = (messages: Message[]): string => {
   // Reduced limit to ensure speed and prevent timeouts
-  const MAX_MESSAGES = 2500; 
+  const MAX_MESSAGES = 3000; 
   
   if (messages.length <= MAX_MESSAGES) {
       return messages.map(m => `[${m.date.toISOString()}] ${m.sender}: ${m.content}`).join('\n');
@@ -41,234 +41,175 @@ const cleanJsonOutput = (text: string): string => {
     return cleaned.trim();
 };
 
+// --- FUNGSI UTAMA ANALISIS ---
 export const analyzeChatWithGemini = async (
     messages: Message[], 
     onStatusUpdate: (status: string) => void
 ): Promise<AnalysisResult> => {
   
-  if (!process.env.API_KEY) {
-    throw new Error("API Key not found in environment variables.");
+  // Ambil API Key dari Vite
+  const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+
+  if (!API_KEY) {
+    throw new Error("API Key tidak ditemukan. Pastikan VITE_GEMINI_API_KEY ada di file .env");
   }
 
-  onStatusUpdate("🔄 Menginisialisasi Client Google GenAI...");
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  onStatusUpdate("🔄 Menginisialisasi AI...");
+  const genAI = new GoogleGenerativeAI(API_KEY);
 
-  onStatusUpdate("📄 Mempersiapkan konteks chat (Tokenizing)...");
+  onStatusUpdate("📄 Mempersiapkan konteks chat...");
   const chatContext = formatChatForPrompt(messages);
 
-  // --- PROMPT YANG DIPERBAIKI (Reflektif, Netral, & Struktur JSON Ketat) ---
   const prompt = `
-Kamu adalah asisten reflektif bernama **"Refleksi Partner"**.
-Tugasmu adalah menganalisis chat dan merangkumnya menjadi sebuah "Recap / Album Kenangan" yang jujur, netral, dan tenang.
-
-Kamu harus membaca percakapan apa adanya, bukan menebak atau melebih-lebihkan perasaan.
-
-==================================================
-PRINSIP WAJIB (ANTI-HALUSINASI)
-==================================================
-- Analisis hanya berdasarkan isi chat yang tertulis.
-- Jangan mengarang cerita, emosi, atau konflik yang tidak jelas di teks.
-- Jangan membuat kesimpulan besar hanya dari percakapan singkat.
-- Jangan memvalidasi perasaan secara berlebihan.
-- Jangan menghakimi siapa pun.
-- Jika chat terasa biasa, datar, atau hanya obrolan ringan, katakan dengan jujur.
-- Jika chat terasa emosional, jelaskan alasannya berdasarkan bukti chat.
-- Boleh menggunakan gaya bahasa puitis HANYA jika isi chat benar-benar romantis atau emosional kuat.
-- Jika data tidak cukup untuk memastikan suatu hal, tulis "tidak cukup bukti".
-
-==================================================
-TUGAS UTAMA 1: DETEKSI JENIS HUBUNGAN (SANGAT PENTING)
-==================================================
-Tentukan jenis hubungan secara spesifik berdasarkan isi chat:
-
-1. **romantic**: Pasangan, suami-istri, pacaran jelas.
-2. **crush**: PDKT, gebetan, flirting, belum jadian tapi ada rasa.
-3. **friendship_boys**: Tongkrongan cowok (bro code, game, bola, santai, kasar-bercanda).
-4. **friendship_girls**: Bestie cewek (curhat, skincare, update life, support system).
-5. **friendship_mixed**: Teman beda gender tapi murni teman (platonic, kuliah, kerja kelompok, atau bestie cowok-cewek).
-6. **bestie**: Sahabat sangat dekat (gender apa saja), sudah seperti keluarga sendiri.
-7. **family**: Orang tua, kakak-adik, grup keluarga besar.
-8. **work**: Kolega, bos, urusan profesional, formal, kaku.
-9. **school**: Teman sekelas, bahas tugas, ujian, dosen/guru.
-10. **long_distance**: Pasangan LDR (banyak call/vidcall, rindu).
-11. **broken**: Mantan, chat putus, galau, closure, atau bertengkar hebat berujung pisah.
-12. **toxic**: Penuh caci maki, manipulatif, gaslighting, tidak sehat.
-13. **stranger**: Transaksi jual beli, kurir, orang baru kenal, sangat formal.
-14. **other**: Tidak masuk kategori di atas.
-
-==================================================
-TUGAS UTAMA 2: SESUAIKAN NADA BICARA
-==================================================
-- **romantic/crush/ldr**: Hangat, lembut, sedikit puitis tapi realistis.
-- **friendship/bestie**: Santai, asik, gunakan "lo-gue" jika cocok, friendly.
-- **friendship_boys**: Maskulin santai, to the point, bro-style.
-- **family**: Hangat, sopan, peduli.
-- **work/school/stranger**: Netral, objektif, profesional.
-- **toxic/broken**: Empatik, hati-hati, reflektif, sedikit melankolis tapi tidak cengeng.
-
-==================================================
-FORMAT OUTPUT
-==================================================
-Kamu WAJIB mengeluarkan output dalam format JSON valid.
-Jangan tambahkan teks, markdown (seperti \`\`\`json), atau penjelasan apa pun di luar blok JSON.
-Hanya kembalikan raw JSON string.
-
-TRANSKRIP CHAT:
+TRANSKRIP CHAT UNTUK DIANALISIS:
 ${chatContext}
 `;
 
   try {
     onStatusUpdate(`📡 Mengirim request ke model (${GEMINI_MODEL_TEXT})...`);
     
-    const response = await ai.models.generateContent({
+    // Konfigurasi Model
+    const model = genAI.getGenerativeModel({
       model: GEMINI_MODEL_TEXT,
-      contents: prompt,
-      config: {
-        // Kita tidak menggunakan System Instruction terpisah agar fokus pada Prompt utama
-        // Tapi kita tetap set Response Mime Type ke JSON
-        responseMimeType: "application/json",
-        responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-                storyTitle: { type: Type.STRING, description: "Judul singkat dan menarik" },
-                summary: { type: Type.STRING, description: "Ringkasan naratif 1-2 paragraf" },
-                relationshipType: { 
-                    type: Type.STRING, 
-                    enum: [
-                        'romantic', 'crush', 'friendship_boys', 'friendship_girls', 
-                        'friendship_mixed', 'bestie', 'family', 'work', 
-                        'school', 'long_distance', 'broken', 'toxic', 
-                        'stranger', 'other'
-                    ] 
-                },
-                emotionalTone: { type: Type.STRING, description: "Nada emosi keseluruhan (contoh: Santai, Tegang)" },
-                emotions: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            emotion: { type: Type.STRING },
-                            intensity: { type: Type.INTEGER },
-                            description: { type: Type.STRING }
-                        }
-                    }
-                },
-                keyMoments: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            title: { type: Type.STRING },
-                            description: { type: Type.STRING },
-                            mood: { type: Type.STRING, enum: ['happy', 'sad', 'neutral', 'tense', 'warm'] },
-                            date: { type: Type.STRING }
-                        }
-                    }
-                },
-                phases: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            name: { type: Type.STRING },
-                            description: { type: Type.STRING },
-                            mood: { type: Type.STRING, enum: ['warm', 'neutral', 'cold', 'tense', 'excited'] },
-                            period: { type: Type.STRING }
-                        }
-                    }
-                },
-                dominantTopics: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            name: { type: Type.STRING },
-                            category: { type: Type.STRING, enum: ['fun', 'deep', 'daily', 'conflict'] }
-                        }
-                    }
-                },
-                toneAnalysis: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            label: { type: Type.STRING },
-                            percentage: { type: Type.INTEGER }
-                        }
-                    }
-                },
-                memorableLines: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            text: { type: Type.STRING },
-                            sender: { type: Type.STRING },
-                            context: { type: Type.STRING },
-                            mood: { type: Type.STRING }
-                        }
-                    }
-                },
-                conflictTriggers: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.STRING
-                    }
-                },
-                monthlyMoods: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            month: { type: Type.STRING },
-                            mood: { type: Type.STRING },
-                            intensity: { type: Type.INTEGER }
-                        }
-                    }
-                },
-                hourlyMoods: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            timeRange: { type: Type.STRING },
-                            mood: { type: Type.STRING },
-                            description: { type: Type.STRING }
-                        }
-                    }
-                },
-                communicationStyle: {
-                    type: Type.OBJECT,
-                    properties: {
-                        mostExpressive: { type: Type.STRING },
-                        quickestReplier: { type: Type.STRING },
-                        description: { type: Type.STRING }
-                    }
-                },
-                reflection: { type: Type.STRING, description: "Pesan penutup bijak" },
-                aiConfidence: { type: Type.STRING, enum: ['high', 'medium', 'low'] }
-            },
-            required: [
-                "storyTitle", "summary", "relationshipType", "emotionalTone", "phases", 
-                "dominantTopics", "memorableLines", "aiConfidence", 
-                "monthlyMoods", "keyMoments", "toneAnalysis", "conflictTriggers", "hourlyMoods"
-            ]
-        },
-        // Explicitly set safety settings to be permissive for analysis so it doesn't block innocent chat analysis
-        safetySettings: [
-          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-        ],
+      systemInstruction: SYSTEM_INSTRUCTION_ANALYSIS, 
+      generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: {
+              type: SchemaType.OBJECT,
+              properties: {
+                  storyTitle: { type: SchemaType.STRING },
+                  summary: { type: SchemaType.STRING },
+                  relationshipType: { type: SchemaType.STRING }, 
+                  emotionalTone: { type: SchemaType.STRING },
+                  emotions: {
+                      type: SchemaType.ARRAY,
+                      items: {
+                          type: SchemaType.OBJECT,
+                          properties: {
+                              emotion: { type: SchemaType.STRING },
+                              intensity: { type: SchemaType.INTEGER },
+                              description: { type: SchemaType.STRING }
+                          }
+                      }
+                  },
+                  keyMoments: {
+                      type: SchemaType.ARRAY,
+                      items: {
+                          type: SchemaType.OBJECT,
+                          properties: {
+                              title: { type: SchemaType.STRING },
+                              description: { type: SchemaType.STRING },
+                              mood: { type: SchemaType.STRING },
+                              date: { type: SchemaType.STRING }
+                          }
+                      }
+                  },
+                  phases: {
+                      type: SchemaType.ARRAY,
+                      items: {
+                          type: SchemaType.OBJECT,
+                          properties: {
+                              name: { type: SchemaType.STRING },
+                              description: { type: SchemaType.STRING },
+                              mood: { type: SchemaType.STRING },
+                              period: { type: SchemaType.STRING }
+                          }
+                      }
+                  },
+                  dominantTopics: {
+                      type: SchemaType.ARRAY,
+                      items: {
+                          type: SchemaType.OBJECT,
+                          properties: {
+                              name: { type: SchemaType.STRING },
+                              category: { type: SchemaType.STRING }
+                          }
+                      }
+                  },
+                  toneAnalysis: {
+                      type: SchemaType.ARRAY,
+                      items: {
+                          type: SchemaType.OBJECT,
+                          properties: {
+                              label: { type: SchemaType.STRING },
+                              percentage: { type: SchemaType.INTEGER }
+                          }
+                      }
+                  },
+                  memorableLines: {
+                      type: SchemaType.ARRAY,
+                      items: {
+                          type: SchemaType.OBJECT,
+                          properties: {
+                              text: { type: SchemaType.STRING },
+                              sender: { type: SchemaType.STRING },
+                              context: { type: SchemaType.STRING },
+                              mood: { type: SchemaType.STRING }
+                          }
+                      }
+                  },
+                  conflictTriggers: {
+                      type: SchemaType.ARRAY,
+                      items: { type: SchemaType.STRING }
+                  },
+                  monthlyMoods: {
+                      type: SchemaType.ARRAY,
+                      items: {
+                          type: SchemaType.OBJECT,
+                          properties: {
+                              month: { type: SchemaType.STRING },
+                              mood: { type: SchemaType.STRING },
+                              intensity: { type: SchemaType.INTEGER }
+                          }
+                      }
+                  },
+                  hourlyMoods: {
+                      type: SchemaType.ARRAY,
+                      items: {
+                          type: SchemaType.OBJECT,
+                          properties: {
+                              timeRange: { type: SchemaType.STRING },
+                              mood: { type: SchemaType.STRING },
+                              description: { type: SchemaType.STRING }
+                          }
+                      }
+                  },
+                  communicationStyle: {
+                      type: SchemaType.OBJECT,
+                      properties: {
+                          mostExpressive: { type: SchemaType.STRING },
+                          quickestReplier: { type: SchemaType.STRING },
+                          description: { type: SchemaType.STRING }
+                      }
+                  },
+                  reflection: { type: SchemaType.STRING },
+                  aiConfidence: { type: SchemaType.STRING }
+              },
+              required: [
+                  "storyTitle", "summary", "relationshipType", "emotionalTone", "phases", 
+                  "dominantTopics", "memorableLines", "aiConfidence", "keyMoments"
+              ]
+          }
       },
+      // Safety settings dipisah (sejajar generationConfig)
+      safetySettings: [
+          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH }
+      ]
     });
+
+    // Generate Content
+    const result = await model.generateContent(prompt);
+    const response = result.response;
+    const text = response.text();
 
     onStatusUpdate("📥 Menerima respon dari server...");
 
-    if (response.text) {
+    if (text) {
       onStatusUpdate("🧹 Membersihkan format output JSON...");
-      const cleanedText = cleanJsonOutput(response.text);
+      const cleanedText = cleanJsonOutput(text);
 
       onStatusUpdate("🔍 Parsing data JSON...");
       try {
@@ -288,18 +229,11 @@ ${chatContext}
           emotions: parsed.emotions || [],
         };
       } catch (e) {
-        console.error("Failed to parse JSON. Raw text:", response.text);
+        console.error("Failed to parse JSON. Raw text:", text);
         onStatusUpdate("❌ Gagal membaca format data AI.");
-        // Memberikan sebagian text raw untuk debugging jika parsing gagal total
         throw new Error(`Gagal membaca hasil analisis (Invalid JSON). Pastikan chat tidak mengandung karakter aneh.`);
       }
     } else {
-        console.warn("Empty response text. Candidates:", response.candidates);
-        if (response.candidates && response.candidates.length > 0 && response.candidates[0].finishReason) {
-            const reason = response.candidates[0].finishReason;
-            onStatusUpdate(`⚠️ Analisis berhenti: ${reason}`);
-            throw new Error(`AI menolak memproses chat (Alasan: ${reason}). Cek apakah chat mengandung konten sensitif.`);
-        }
         throw new Error("Tidak ada respon dari AI. Server mungkin sibuk.");
     }
   } catch (error: any) {
@@ -308,38 +242,45 @@ ${chatContext}
     let userMsg = "Terjadi kesalahan sistem.";
     let technicalMsg = error.message;
 
-    if (error.message?.includes('400')) {
-        userMsg = "Request ditolak (400). Chat mungkin terlalu panjang atau format salah.";
-    } else if (error.message?.includes('401') || error.message?.includes('API Key')) {
-        userMsg = "Kunci API tidak valid atau tidak ditemukan.";
-    } else if (error.message?.includes('429')) {
-        userMsg = "Terlalu banyak permintaan (Rate Limit). Tunggu sebentar.";
-    } else if (error.message?.includes('500')) {
-        userMsg = "Server AI Google sedang down (500).";
-    } else if (error.message?.includes('503')) {
-        userMsg = "Layanan AI sedang overload (503).";
-    }
+    if (error.message?.includes('400')) userMsg = "Request ditolak (400). Chat mungkin terlalu panjang.";
+    else if (error.message?.includes('401') || error.message?.includes('API Key')) userMsg = "Kunci API tidak valid.";
+    else if (error.message?.includes('429')) userMsg = "Terlalu banyak permintaan (Rate Limit). Tunggu sebentar.";
+    else if (error.message?.includes('500')) userMsg = "Server AI Google sedang down (500).";
+    else if (error.message?.includes('503')) userMsg = "Layanan AI sedang overload (503).";
 
     onStatusUpdate(`❌ Error: ${technicalMsg}`);
-    
-    // Throw error object with both user friendly and technical details
     throw { userMsg, technicalMsg };
   }
 };
 
+// --- FUNGSI CHAT SESSION ---
 export const createChatSession = (messages: Message[]) => {
-    if (!process.env.API_KEY) {
-        throw new Error("API Key not found");
+    // Ambil API key dari Vite
+    const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!API_KEY) {
+        throw new Error("API Key tidak ditemukan. Pastikan VITE_GEMINI_API_KEY ada di file .env");
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const genAI = new GoogleGenerativeAI(API_KEY);
     const chatContext = formatChatForPrompt(messages);
 
-    const chat = ai.chats.create({
+    const model = genAI.getGenerativeModel({ 
         model: GEMINI_MODEL_TEXT,
-        config: {
-            systemInstruction: `${SYSTEM_INSTRUCTION_CHAT}\n\nKONTEKS CHAT:\n${chatContext}`
-        }
+        systemInstruction: SYSTEM_INSTRUCTION_CHAT
+    });
+
+    // Return ChatSession object, BUKAN model
+    const chat = model.startChat({
+        history: [
+            {
+                role: "user",
+                parts: [{ text: `Ini adalah data chat history kami:\n${chatContext}` }],
+            },
+            {
+                role: "model",
+                parts: [{ text: "Baik, saya sudah membaca data chat tersebut. Silakan tanya apa saja, saya akan menjawab berdasarkan konteks tersebut dengan gaya santai." }],
+            }
+        ],
     });
 
     return chat;
