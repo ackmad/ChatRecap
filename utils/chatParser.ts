@@ -1,4 +1,4 @@
-import { Message, ChatData, ParticipantStats, SilencePeriod } from "../types";
+import { Message, ChatData, ParticipantStats, SilencePeriod, DailyStats } from "../types";
 
 export const parseWhatsAppChat = (text: string): ChatData => {
   const lines = text.split('\n');
@@ -96,6 +96,7 @@ export const parseWhatsAppChat = (text: string): ChatData => {
 
   const hourlyCount = new Array(24).fill(0);
   const dailyCount: Record<string, number> = {};
+  const dailyBreakdown: Record<string, Record<string, number>> = {}; // New: Breakdown per day
   const replyTimes: Record<string, number[]> = {};
   const silencePeriods: SilencePeriod[] = [];
 
@@ -115,6 +116,12 @@ export const parseWhatsAppChat = (text: string): ChatData => {
     // 3. Daily Distribution
     const dateKey = msg.date.toISOString().split('T')[0];
     dailyCount[dateKey] = (dailyCount[dateKey] || 0) + 1;
+    
+    // Daily Breakdown Logic
+    if (!dailyBreakdown[dateKey]) {
+        dailyBreakdown[dateKey] = {};
+    }
+    dailyBreakdown[dateKey][msg.sender] = (dailyBreakdown[dateKey][msg.sender] || 0) + 1;
 
     // 4. Initiations, Reply Times & Silence Tracking
     if (lastMessage) {
@@ -183,9 +190,10 @@ export const parseWhatsAppChat = (text: string): ChatData => {
 
   // Format Data for Charts
   const hourlyDistribution = hourlyCount.map((count, hour) => ({ hour, count }));
-  const dailyDistributionArray = Object.keys(dailyCount).sort().map(date => ({
+  const dailyDistributionArray: DailyStats[] = Object.keys(dailyCount).sort().map(date => ({
       date,
-      count: dailyCount[date]
+      count: dailyCount[date],
+      breakdown: dailyBreakdown[date] || {}
   }));
 
   // Duration & Averages

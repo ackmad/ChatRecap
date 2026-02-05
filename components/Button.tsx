@@ -2,8 +2,12 @@ import React from 'react';
 import { motion, HTMLMotionProps } from 'framer-motion';
 
 interface ButtonProps extends HTMLMotionProps<"button"> {
+  children?: React.ReactNode;
+  className?: string;
   variant?: 'primary' | 'secondary' | 'ghost';
   fullWidth?: boolean;
+  onClick?: React.MouseEventHandler<HTMLButtonElement>;
+  disabled?: boolean;
 }
 
 export const Button: React.FC<ButtonProps> = ({ 
@@ -11,6 +15,8 @@ export const Button: React.FC<ButtonProps> = ({
   variant = 'primary', 
   fullWidth = false,
   className = '',
+  onClick,
+  disabled,
   ...props 
 }) => {
   const baseStyle = "px-6 py-3 rounded-2xl font-bold font-heading transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
@@ -25,9 +31,11 @@ export const Button: React.FC<ButtonProps> = ({
 
   return (
     <motion.button 
-      whileHover={{ scale: 1.03, y: -2 }}
-      whileTap={{ scale: 0.98 }}
+      whileHover={disabled ? {} : { scale: 1.03, y: -2 }}
+      whileTap={disabled ? {} : { scale: 0.98 }}
       className={`${baseStyle} ${variants[variant]} ${fullWidth ? 'w-full' : ''} ${className}`}
+      onClick={onClick}
+      disabled={disabled}
       {...props}
     >
       {children}

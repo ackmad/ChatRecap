@@ -19,6 +19,12 @@ export interface SilencePeriod {
   breaker: string; // Who broke the silence
 }
 
+export interface DailyStats {
+  date: string;
+  count: number;
+  breakdown: Record<string, number>; // New: Specific counts per person for this day
+}
+
 export interface ChatData {
   participants: string[];
   messages: Message[];
@@ -28,13 +34,13 @@ export interface ChatData {
     end: Date | null;
   };
   durationString: string;
-  activeDays: number; // New
-  avgMessagesPerDay: number; // New
-  mediaCount: number; // New (approximate)
+  activeDays: number;
+  avgMessagesPerDay: number;
+  mediaCount: number;
   busiestDay: { date: string; count: number };
   busiestHour: number; // 0-23
   hourlyDistribution: { hour: number; count: number }[];
-  dailyDistribution: { date: string; count: number }[];
+  dailyDistribution: DailyStats[]; // Updated
   participantStats: Record<string, ParticipantStats>;
   silencePeriods: SilencePeriod[];
   balanceScore: number; // 0-100 (50 is perfect balance)
@@ -84,9 +90,27 @@ export interface HourlyMood {
   description: string;
 }
 
+// Updated Relationship Types for better theming
+export type RelationshipType = 
+  | 'romantic' 
+  | 'crush'
+  | 'friendship_boys' // Cowok & Cowok
+  | 'friendship_girls' // Cewek & Cewek
+  | 'friendship_mixed' // Cowok & Cewek (Friendzone/Biasa)
+  | 'bestie'
+  | 'family' 
+  | 'work' 
+  | 'school'
+  | 'long_distance'
+  | 'broken'
+  | 'toxic'
+  | 'stranger'
+  | 'other';
+
 export interface AnalysisResult {
   summary: string;
-  storyTitle: string; // New: A creative title for the chat history
+  storyTitle: string;
+  relationshipType: RelationshipType; 
   emotionalTone: string;
   emotions: EmotionBubble[];
   keyMoments: KeyMoment[];
@@ -96,9 +120,9 @@ export interface AnalysisResult {
   toneAnalysis: { label: string; percentage: number }[];
   conflictTriggers: string[];
   memorableLines: MemorableLine[];
-  monthlyMoods: MonthlyMood[]; // New
-  hourlyMoods: HourlyMood[]; // New
-  communicationStyle: { // New
+  monthlyMoods: MonthlyMood[];
+  hourlyMoods: HourlyMood[];
+  communicationStyle: {
      mostExpressive: string;
      quickestReplier: string;
      description: string;
@@ -121,3 +145,13 @@ export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
 }
+
+export interface LiveStats {
+  online: number;
+  uploading: number;
+  analyzing: number;
+  reading: number;
+  chatting: number;
+}
+
+export type UserActivityStatus = 'idle' | 'uploading' | 'analyzing' | 'reading' | 'chatting';

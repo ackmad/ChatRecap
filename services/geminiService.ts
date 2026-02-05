@@ -1,11 +1,11 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { Message, AnalysisResult } from "../types";
-import { SYSTEM_INSTRUCTION_ANALYSIS, SYSTEM_INSTRUCTION_CHAT, GEMINI_MODEL_TEXT } from "../constants";
+import { SYSTEM_INSTRUCTION_CHAT, GEMINI_MODEL_TEXT } from "../constants";
 
 // Helper to format chat for AI context with smarter sampling
 const formatChatForPrompt = (messages: Message[]): string => {
-  // If messages are too long, take start, middle, and end chunks to represent the whole journey
-  const MAX_MESSAGES = 1800;
+  // Reduced limit to ensure speed and prevent timeouts
+  const MAX_MESSAGES = 2500; 
   
   if (messages.length <= MAX_MESSAGES) {
       return messages.map(m => `[${m.date.toISOString()}] ${m.sender}: ${m.content}`).join('\n');
@@ -19,57 +19,129 @@ const formatChatForPrompt = (messages: Message[]): string => {
 
   return [
     ...start.map(m => `[${m.date.toISOString()}] ${m.sender}: ${m.content}`),
-    "\n... [BAGIAN TENGAH CHAT] ...\n",
+    "\n... [BAGIAN TENGAH CHAT DILEWATI UTK EFISIENSI] ...\n",
     ...middle.map(m => `[${m.date.toISOString()}] ${m.sender}: ${m.content}`),
     "\n... [BAGIAN AKHIR CHAT] ...\n",
     ...end.map(m => `[${m.date.toISOString()}] ${m.sender}: ${m.content}`)
   ].join('\n');
 };
 
-export const analyzeChatWithGemini = async (messages: Message[]): Promise<AnalysisResult> => {
+const cleanJsonOutput = (text: string): string => {
+    // 1. Remove Markdown code blocks (regex yang lebih agresif)
+    let cleaned = text.replace(/```json/gi, '').replace(/```/g, '');
+    
+    // 2. Find the first '{' and last '}' to ensure we only get the object
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+    
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+    }
+
+    return cleaned.trim();
+};
+
+export const analyzeChatWithGemini = async (
+    messages: Message[], 
+    onStatusUpdate: (status: string) => void
+): Promise<AnalysisResult> => {
+  
   if (!process.env.API_KEY) {
-    throw new Error("API Key not found");
+    throw new Error("API Key not found in environment variables.");
   }
 
+  onStatusUpdate("🔄 Menginisialisasi Client Google GenAI...");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+  onStatusUpdate("📄 Mempersiapkan konteks chat (Tokenizing)...");
   const chatContext = formatChatForPrompt(messages);
 
-const prompt = `
-Anda adalah "Refleksi Partner" yang netral, hangat, dan puitis. Tugas Anda adalah merangkum riwayat chat menjadi sebuah "Album Kenangan Digital".
-Jangan menghakimi. Jangan menyimpulkan perasaan cinta/benci secara sepihak. Fokus pada pola komunikasi dan perubahan dinamika.
+  // --- PROMPT YANG DIPERBAIKI (Reflektif, Netral, & Struktur JSON Ketat) ---
+  const prompt = `
+Kamu adalah asisten reflektif bernama **"Refleksi Partner"**.
+Tugasmu adalah menganalisis chat dan merangkumnya menjadi sebuah "Recap / Album Kenangan" yang jujur, netral, dan tenang.
 
-DATA YANG WAJIB DIANALISIS (OUTPUT JSON):
+Kamu harus membaca percakapan apa adanya, bukan menebak atau melebih-lebihkan perasaan.
 
-1. **Summary & Title**: Buat judul kreatif untuk riwayat chat ini (misal: "Kisah Tentang Kopi & Senja") dan ringkasan naratif 6-10 baris yang menceritakan perjalanan dari awal sampai akhir.
-2. **Emotional Tone**: Jelaskan nada emosional keseluruhan.
-3. **Phases (Fase Hubungan)**: Bagi menjadi 3-5 fase logis (contoh: "Awal Kenalan", "Masa Intens", "Fase Hening").
-4. **Dominant Topics**: 5-10 Topik yang paling sering muncul.
-5. **Tone Analysis**: Persentase nada (Santai, Serius, Bercanda, Hati-hati, dll).
-6. **Key Moments**: 3-5 momen penting dengan tanggal perkiraan.
-7. **Memorable Lines**: Kutipan chat yang lucu, menyentuh, atau unik.
-8. **Conflict Triggers**: Kata-kata yang sering muncul saat suasana menegang (jika ada).
-9. **Monthly Moods**: Analisis mood dominan per bulan (jika chat panjang) atau per minggu.
-10. **Hourly Moods**: Analisis mood berdasarkan jam (Pagi, Siang, Malam, Tengah Malam).
-11. **Communication Style**: Siapa yang lebih ekspresif? Siapa yang balas cepat? Deskripsikan dengan netral.
-12. **AI Confidence**: Seberapa yakin Anda dengan analisis ini berdasarkan kelengkapan data (High/Medium/Low).
+==================================================
+PRINSIP WAJIB (ANTI-HALUSINASI)
+==================================================
+- Analisis hanya berdasarkan isi chat yang tertulis.
+- Jangan mengarang cerita, emosi, atau konflik yang tidak jelas di teks.
+- Jangan membuat kesimpulan besar hanya dari percakapan singkat.
+- Jangan memvalidasi perasaan secara berlebihan.
+- Jangan menghakimi siapa pun.
+- Jika chat terasa biasa, datar, atau hanya obrolan ringan, katakan dengan jujur.
+- Jika chat terasa emosional, jelaskan alasannya berdasarkan bukti chat.
+- Boleh menggunakan gaya bahasa puitis HANYA jika isi chat benar-benar romantis atau emosional kuat.
+- Jika data tidak cukup untuk memastikan suatu hal, tulis "tidak cukup bukti".
+
+==================================================
+TUGAS UTAMA 1: DETEKSI JENIS HUBUNGAN (SANGAT PENTING)
+==================================================
+Tentukan jenis hubungan secara spesifik berdasarkan isi chat:
+
+1. **romantic**: Pasangan, suami-istri, pacaran jelas.
+2. **crush**: PDKT, gebetan, flirting, belum jadian tapi ada rasa.
+3. **friendship_boys**: Tongkrongan cowok (bro code, game, bola, santai, kasar-bercanda).
+4. **friendship_girls**: Bestie cewek (curhat, skincare, update life, support system).
+5. **friendship_mixed**: Teman beda gender tapi murni teman (platonic, kuliah, kerja kelompok, atau bestie cowok-cewek).
+6. **bestie**: Sahabat sangat dekat (gender apa saja), sudah seperti keluarga sendiri.
+7. **family**: Orang tua, kakak-adik, grup keluarga besar.
+8. **work**: Kolega, bos, urusan profesional, formal, kaku.
+9. **school**: Teman sekelas, bahas tugas, ujian, dosen/guru.
+10. **long_distance**: Pasangan LDR (banyak call/vidcall, rindu).
+11. **broken**: Mantan, chat putus, galau, closure, atau bertengkar hebat berujung pisah.
+12. **toxic**: Penuh caci maki, manipulatif, gaslighting, tidak sehat.
+13. **stranger**: Transaksi jual beli, kurir, orang baru kenal, sangat formal.
+14. **other**: Tidak masuk kategori di atas.
+
+==================================================
+TUGAS UTAMA 2: SESUAIKAN NADA BICARA
+==================================================
+- **romantic/crush/ldr**: Hangat, lembut, sedikit puitis tapi realistis.
+- **friendship/bestie**: Santai, asik, gunakan "lo-gue" jika cocok, friendly.
+- **friendship_boys**: Maskulin santai, to the point, bro-style.
+- **family**: Hangat, sopan, peduli.
+- **work/school/stranger**: Netral, objektif, profesional.
+- **toxic/broken**: Empatik, hati-hati, reflektif, sedikit melankolis tapi tidak cengeng.
+
+==================================================
+FORMAT OUTPUT
+==================================================
+Kamu WAJIB mengeluarkan output dalam format JSON valid.
+Jangan tambahkan teks, markdown (seperti \`\`\`json), atau penjelasan apa pun di luar blok JSON.
+Hanya kembalikan raw JSON string.
 
 TRANSKRIP CHAT:
 ${chatContext}
 `;
 
   try {
+    onStatusUpdate(`📡 Mengirim request ke model (${GEMINI_MODEL_TEXT})...`);
+    
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL_TEXT,
       contents: prompt,
       config: {
-        systemInstruction: SYSTEM_INSTRUCTION_ANALYSIS, 
+        // Kita tidak menggunakan System Instruction terpisah agar fokus pada Prompt utama
+        // Tapi kita tetap set Response Mime Type ke JSON
         responseMimeType: "application/json",
         responseSchema: {
             type: Type.OBJECT,
             properties: {
-                storyTitle: { type: Type.STRING },
-                summary: { type: Type.STRING },
-                emotionalTone: { type: Type.STRING },
+                storyTitle: { type: Type.STRING, description: "Judul singkat dan menarik" },
+                summary: { type: Type.STRING, description: "Ringkasan naratif 1-2 paragraf" },
+                relationshipType: { 
+                    type: Type.STRING, 
+                    enum: [
+                        'romantic', 'crush', 'friendship_boys', 'friendship_girls', 
+                        'friendship_mixed', 'bestie', 'family', 'work', 
+                        'school', 'long_distance', 'broken', 'toxic', 
+                        'stranger', 'other'
+                    ] 
+                },
+                emotionalTone: { type: Type.STRING, description: "Nada emosi keseluruhan (contoh: Santai, Tegang)" },
                 emotions: {
                     type: Type.ARRAY,
                     items: {
@@ -139,7 +211,9 @@ ${chatContext}
                 },
                 conflictTriggers: {
                     type: Type.ARRAY,
-                    items: { type: Type.STRING }
+                    items: {
+                        type: Type.STRING
+                    }
                 },
                 monthlyMoods: {
                     type: Type.ARRAY,
@@ -171,22 +245,37 @@ ${chatContext}
                         description: { type: Type.STRING }
                     }
                 },
-                reflection: { type: Type.STRING },
+                reflection: { type: Type.STRING, description: "Pesan penutup bijak" },
                 aiConfidence: { type: Type.STRING, enum: ['high', 'medium', 'low'] }
             },
             required: [
-                "storyTitle", "summary", "emotionalTone", "phases", 
+                "storyTitle", "summary", "relationshipType", "emotionalTone", "phases", 
                 "dominantTopics", "memorableLines", "aiConfidence", 
                 "monthlyMoods", "keyMoments", "toneAnalysis", "conflictTriggers", "hourlyMoods"
             ]
-        }
+        },
+        // Explicitly set safety settings to be permissive for analysis so it doesn't block innocent chat analysis
+        safetySettings: [
+          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+        ],
       },
     });
 
+    onStatusUpdate("📥 Menerima respon dari server...");
+
     if (response.text) {
-      const parsed = JSON.parse(response.text) as AnalysisResult;
-      // Robustness: Ensure all arrays are present to avoid "map of undefined"
-      return {
+      onStatusUpdate("🧹 Membersihkan format output JSON...");
+      const cleanedText = cleanJsonOutput(response.text);
+
+      onStatusUpdate("🔍 Parsing data JSON...");
+      try {
+        const parsed = JSON.parse(cleanedText) as AnalysisResult;
+        
+        onStatusUpdate("✅ Analisis berhasil!");
+        return {
           ...parsed,
           phases: parsed.phases || [],
           dominantTopics: parsed.dominantTopics || [],
@@ -197,13 +286,44 @@ ${chatContext}
           monthlyMoods: parsed.monthlyMoods || [],
           hourlyMoods: parsed.hourlyMoods || [],
           emotions: parsed.emotions || [],
-      };
+        };
+      } catch (e) {
+        console.error("Failed to parse JSON. Raw text:", response.text);
+        onStatusUpdate("❌ Gagal membaca format data AI.");
+        // Memberikan sebagian text raw untuk debugging jika parsing gagal total
+        throw new Error(`Gagal membaca hasil analisis (Invalid JSON). Pastikan chat tidak mengandung karakter aneh.`);
+      }
     } else {
-      throw new Error("No response text from Gemini");
+        console.warn("Empty response text. Candidates:", response.candidates);
+        if (response.candidates && response.candidates.length > 0 && response.candidates[0].finishReason) {
+            const reason = response.candidates[0].finishReason;
+            onStatusUpdate(`⚠️ Analisis berhenti: ${reason}`);
+            throw new Error(`AI menolak memproses chat (Alasan: ${reason}). Cek apakah chat mengandung konten sensitif.`);
+        }
+        throw new Error("Tidak ada respon dari AI. Server mungkin sibuk.");
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Analysis Error:", error);
-    throw error;
+    
+    let userMsg = "Terjadi kesalahan sistem.";
+    let technicalMsg = error.message;
+
+    if (error.message?.includes('400')) {
+        userMsg = "Request ditolak (400). Chat mungkin terlalu panjang atau format salah.";
+    } else if (error.message?.includes('401') || error.message?.includes('API Key')) {
+        userMsg = "Kunci API tidak valid atau tidak ditemukan.";
+    } else if (error.message?.includes('429')) {
+        userMsg = "Terlalu banyak permintaan (Rate Limit). Tunggu sebentar.";
+    } else if (error.message?.includes('500')) {
+        userMsg = "Server AI Google sedang down (500).";
+    } else if (error.message?.includes('503')) {
+        userMsg = "Layanan AI sedang overload (503).";
+    }
+
+    onStatusUpdate(`❌ Error: ${technicalMsg}`);
+    
+    // Throw error object with both user friendly and technical details
+    throw { userMsg, technicalMsg };
   }
 };
 
