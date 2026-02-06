@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, SchemaType, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 import { Message, AnalysisResult } from "../types";
 import { SYSTEM_INSTRUCTION_CHAT, SYSTEM_INSTRUCTION_ANALYSIS, GEMINI_MODEL_TEXT } from "../constants";
 
@@ -145,19 +145,24 @@ ${chatContext}
     } catch (error: any) {
       console.warn(`⚠️ API ${keyIndex} Gagal:`, error.message);
       lastError = error;
+      const errMsg = error.message || "";
 
-      // Cek jenis error: Apakah karena Limit (429) atau Server Penuh (503)?
-      if (error.message?.includes('429') || error.message?.includes('503') || error.message?.includes('quota')) {
-        onStatusUpdate(`⚠️ API ${keyIndex} Limit/Sibuk. Mengganti ke API selanjutnya...`);
+      // Cek jenis error untuk memutuskan ganti key atau tidak
+      // Tambahkan '403' dan 'API key' agar kalau key bocor/mati, dia pindah ke key berikutnya
+      const isQuotaError = errMsg.includes('429') || errMsg.includes('503') || errMsg.includes('quota');
+      const isKeyError = errMsg.includes('403') || errMsg.includes('API key') || errMsg.includes('key not valid');
+
+      if (isQuotaError || isKeyError) {
+        onStatusUpdate(`⚠️ API ${keyIndex} Bermasalah (Limit/Invalid). Mengganti ke API selanjutnya...`);
         // Lanjut ke loop berikutnya (key selanjutnya)
         continue;
-      } else if (error.message?.includes('JSON')) {
+      } else if (errMsg.includes('JSON')) {
         // Jika error JSON Parse, berarti AI jawab ngawur, tidak perlu ganti key, tapi lempar error ke user
         onStatusUpdate("❌ Format jawaban AI rusak.");
         throw new Error(`Format jawaban AI rusak. Cek Console (F12).`);
       } else {
-        // Jika error lain (misal 400 Bad Request), lempar error (jangan loop)
-        onStatusUpdate(`❌ Terjadi error pada API ${keyIndex}: ${error.message}`);
+        // Jika error lain (misal 400 Bad Request karena chat kepanjangan banget), lempar error
+        onStatusUpdate(`❌ Terjadi error pada API ${keyIndex}: ${errMsg}`);
         break;
       }
     }
@@ -175,14 +180,16 @@ ${chatContext}
   };
 };
 
-// --- FUNGSI CHAT SESSION (Ambil Key Pertama/Random) ---
+// --- FUNGSI CHAT SESSION (Random Key) ---
 export const createChatSession = (messages: Message[]) => {
-  // Ambil satu key saja untuk chat session (bisa ambil index 0)
-  const key = API_KEYS[0];
-
-  if (!key) {
+  if (API_KEYS.length === 0) {
     throw new Error("API Key tidak ditemukan.");
   }
+
+  // PERBAIKAN: Ambil key secara RANDOM agar beban terbagi
+  // Tidak hanya membebani Key 1
+  const randomIndex = Math.floor(Math.random() * API_KEYS.length);
+  const key = API_KEYS[randomIndex];
 
   const genAI = new GoogleGenerativeAI(key);
   const chatContext = formatChatForPrompt(messages);
