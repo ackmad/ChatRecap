@@ -2,7 +2,7 @@ export const GEMINI_MODEL_TEXT = 'gemini-3-flash-preview';
 // export const GEMINI_MODEL_TEXT = 'gemini-1.5-flash'; 
 // export const GEMINI_MODEL_TEXT = 'gemini-2.0-flash-exp'; 
 
-export const APP_VERSION = 'v.2.5.7';
+export const APP_VERSION = 'v.2.6.1';
 
 // Prompt Analisis: Langsung to the point minta JSON sesuai struktur Type di frontend
 export const SYSTEM_INSTRUCTION_ANALYSIS = `

@@ -241,6 +241,10 @@ const LoadingScreen = ({
     const scrollRef = useRef<HTMLDivElement>(null);
     const [showTechDetails, setShowTechDetails] = useState(false);
 
+    // Get Active API & Status from logs
+    const activeApi = logs.slice().reverse().find(l => l.includes("API"))?.match(/API \d+/)?.[0] || "API Checking...";
+    const currentStatus = logs.length > 0 ? logs[logs.length - 1] : "Memulai sistem...";
+
     // Auto scroll logs
     useEffect(() => {
         if (scrollRef.current) {
@@ -306,18 +310,32 @@ const LoadingScreen = ({
     return (
         <div className={`fixed inset-0 z-50 flex flex-col items-center justify-center bg-gradient-to-br from-pastel-lavender to-pastel-peach dark:from-stone-950 dark:to-neutral-900 transition-colors duration-1000 ${isFadingOut ? 'opacity-0' : 'opacity-100'}`}>
             <div className="relative z-10 text-center w-full max-w-md px-8 flex flex-col items-center">
+
+                {/* Active API Badge */}
+                <motion.div
+                    initial={{ y: -20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    className="mb-8 bg-white/80 dark:bg-stone-800/80 backdrop-blur px-4 py-1.5 rounded-full border border-stone-200 dark:border-stone-700 shadow-sm flex items-center gap-2"
+                >
+                    <Cpu size={14} className="text-pastel-primary animate-pulse" />
+                    <span className="text-xs font-bold text-stone-600 dark:text-stone-300 tracking-wide uppercase">{activeApi} ACTIVE</span>
+                </motion.div>
+
                 <motion.div
                     animate={{ y: [0, -10, 0] }}
                     transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
-                    className="mb-8 relative"
+                    className="mb-6 relative"
                 >
                     <div className="w-24 h-24 bg-white dark:bg-stone-800 rounded-full flex items-center justify-center shadow-lg border-4 border-white dark:border-stone-700">
                         <Bot size={48} className="text-pastel-primary" />
                     </div>
                 </motion.div>
 
-                <h2 className="text-2xl font-heading font-bold text-stone-700 dark:text-stone-200 mb-2">AI Sedang Bekerja...</h2>
-                <p className="text-stone-500 dark:text-stone-400 text-sm mb-6">Jangan tutup halaman ini ya.</p>
+                <h2 className="text-xl font-heading font-bold text-stone-700 dark:text-stone-200 mb-2 min-h-[3.5rem] flex items-center justify-center">
+                    {currentStatus}
+                </h2>
+
+                <p className="text-stone-500 dark:text-stone-400 text-sm mb-6">Jangan menutup halaman ini.</p>
 
                 <div className="relative w-full h-4 bg-white/40 dark:bg-stone-900/40 rounded-full overflow-hidden shadow-inner mb-2">
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent w-full h-full -translate-x-full animate-[shimmer_2s_infinite]"></div>
@@ -352,7 +370,7 @@ const LoadingScreen = ({
                                 className="flex gap-2"
                             >
                                 <span className="text-stone-500">[{new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}]</span>
-                                <span className={log.includes('Error') || log.includes('Gagal') ? 'text-red-400' : 'text-emerald-300'}>
+                                <span className={log.includes('Error') || log.includes('TOKEN') || log.includes('Gagal') ? 'text-red-400' : 'text-emerald-300'}>
                                     {log.startsWith('>') ? log.substring(1) : log}
                                 </span>
                             </motion.div>
