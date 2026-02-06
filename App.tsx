@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, FileText, MessageSquare, ArrowRight, ShieldCheck, RefreshCw, Send, Sparkles, Clock, Calendar, MessageCircle, Heart, User, BookOpen, Feather, Cpu, Layers, ArrowLeft, Coffee, Sun, Moon, Minus, Plus, Hourglass, Tag, Scale, AlertCircle, Quote, ChevronLeft, ChevronRight, Info, BarChart2, TrendingUp, Music, Bot, Lock, CheckCircle, HelpCircle, File, Smartphone, Users, Eye, Brain, Terminal, XCircle, AlertTriangle } from 'lucide-react';
+import { Upload, FileText, MessageSquare, ArrowRight, ShieldCheck, RefreshCw, Send, Sparkles, Clock, Calendar, MessageCircle, Heart, User, BookOpen, Feather, Cpu, Layers, ArrowLeft, Coffee, Sun, Moon, Minus, Plus, Hourglass, Tag, Scale, AlertCircle, Quote, ChevronLeft, ChevronRight, Info, BarChart2, TrendingUp, Music, Bot, Lock, CheckCircle, HelpCircle, File, Smartphone, Users, Eye, Brain, Terminal, XCircle, AlertTriangle, Download, Share2, Image as ImageIcon, Grid, Layout as LayoutIcon, Type } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AreaChart, Area, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import ReactMarkdown from 'react-markdown';
@@ -9,6 +9,8 @@ import { AppState, ChatData, AnalysisResult, ChatMessage, Message, RelationshipT
 import { Layout } from './components/Layout';
 import { Button } from './components/Button';
 import { ChatSession } from "@google/generative-ai";
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import { APP_VERSION } from './constants';
 
 // --- Improved Adaptive Copywriting & Theme System ---
@@ -452,6 +454,368 @@ const StoryViewer = ({ analysis, onClose }: { analysis: AnalysisResult, onClose:
     );
 };
 
+// --- PDF Generator Modal ---
+const PDFGeneratorModal = ({ analysis, chatData, onClose }: { analysis: AnalysisResult, chatData: ChatData, onClose: () => void }) => {
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [pdfFormat, setPdfFormat] = useState<'summary' | 'full' | 'story'>('full');
+    const pdfRef = useRef<HTMLDivElement>(null);
+
+    const generatePDF = async (type: 'summary' | 'full' | 'story') => {
+        if (!pdfRef.current) return;
+        setPdfFormat(type);
+        setIsGenerating(true);
+        try {
+            // Wait for render/layout update
+            await new Promise(r => setTimeout(r, 500));
+
+            const canvas = await html2canvas(pdfRef.current, {
+                scale: 2,
+                useCORS: true,
+                backgroundColor: '#ffffff'
+            });
+
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+
+            const imgWidth = 210;
+            const pageHeight = 297;
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            let heightLeft = imgHeight;
+            let position = 0;
+
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+
+            while (heightLeft >= 0) {
+                position = heightLeft - imgHeight;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                heightLeft -= pageHeight;
+            }
+
+            pdf.save(`RecapChat-${type}-${new Date().toISOString().split('T')[0]}.pdf`);
+            onClose();
+        } catch (e) {
+            console.error(e);
+            alert("Gagal membuat PDF. Coba lagi.");
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-stone-900 rounded-3xl w-full max-w-4xl p-8 relative overflow-hidden flex flex-col md:flex-row gap-8 max-h-[90vh]">
+                <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-stone-100 dark:bg-stone-800 rounded-full text-stone-500 hover:text-stone-800"><XCircle size={20} /></button>
+
+                {/* Options Panel */}
+                <div className="flex-1 space-y-6 overflow-y-auto">
+                    <div>
+                        <h2 className="text-2xl font-heading font-bold text-stone-800 dark:text-white mb-2">Simpan Sebagai Arsip</h2>
+                        <p className="text-stone-500 dark:text-stone-400 text-sm">Pilih format dokumen yang kamu butuhkan.</p>
+                    </div>
+
+                    <div className="grid gap-4">
+                        <button onClick={() => generatePDF('summary')} className="flex items-start gap-4 p-4 rounded-2xl border border-stone-200 dark:border-stone-700 hover:border-pastel-primary hover:bg-pastel-primary/5 transition-all text-left group">
+                            <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-xl text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform"><FileText size={24} /></div>
+                            <div>
+                                <h3 className="font-bold text-stone-800 dark:text-stone-200">PDF Ringkas (Summary)</h3>
+                                <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">1-2 Halaman. Berisi highlight mood, topik, dan quote terbaik.</p>
+                            </div>
+                        </button>
+
+                        <button onClick={() => generatePDF('full')} className="flex items-start gap-4 p-4 rounded-2xl border border-stone-200 dark:border-stone-700 hover:border-pastel-primary hover:bg-pastel-primary/5 transition-all text-left group">
+                            <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-xl text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform"><Layers size={24} /></div>
+                            <div>
+                                <h3 className="font-bold text-stone-800 dark:text-stone-200">Full Report (Lengkap)</h3>
+                                <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">Semua analisis lengkap: timeline, grafik detak jantung, emosi per jam, dan detail lainnya.</p>
+                            </div>
+                        </button>
+                    </div>
+
+                    <div className="pt-4 border-t border-stone-100 dark:border-stone-800">
+                        <p className="text-[10px] text-stone-400 mb-2">Preview PDF generated content:</p>
+                        {isGenerating && <div className="text-sm text-pastel-primary animate-pulse">Sedang menyusun halaman PDF ({pdfFormat})...</div>}
+                    </div>
+                </div>
+
+                {/* Hidden Render Container for PDF */}
+                <div className="hidden md:block w-[400px] border border-stone-100 dark:border-stone-800 rounded-xl overflow-hidden bg-stone-50 relative">
+                    <div className="absolute inset-0 overflow-y-auto scrollbar-thin p-4 opacity-50 pointer-events-none transform scale-50 origin-top-left w-[200%] h-[200%]">
+                        {/* Actual content to capture */}
+                        <div ref={pdfRef} className="w-[794px] min-h-[1123px] bg-white p-[50px] text-stone-900 relative shadow-xl mx-auto">
+                            {/* Watermark */}
+                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 -rotate-45 text-9xl font-bold opacity-[0.03] pointer-events-none">RECAP CHAT</div>
+
+                            {/* Header */}
+                            <div className="flex justify-between items-end border-b-2 border-stone-900 pb-6 mb-10">
+                                <div>
+                                    <div className="text-xs font-bold text-stone-400 uppercase tracking-[0.3em] mb-2">OFFICIAL RECAP</div>
+                                    <h1 className="text-4xl font-heading font-bold text-stone-900 leading-tight">{analysis.storyTitle}</h1>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-sm font-bold text-stone-500">{new Date().toLocaleDateString()}</div>
+                                    <div className="text-xs text-stone-400">recapchat.xyz</div>
+                                </div>
+                            </div>
+
+                            {/* Content Grid */}
+                            <div className="grid grid-cols-2 gap-10 mb-10">
+                                <div>
+                                    <h3 className="text-xs font-bold font-mono uppercase text-stone-400 mb-2">HUBUNGAN</h3>
+                                    <p className="text-xl font-medium">{chatData.participants ? chatData.participants.join(' & ') : 'Chat Analysis'}</p>
+                                    <div className="mt-4 flex gap-2">
+                                        <span className="px-3 py-1 bg-stone-100 rounded text-xs font-bold uppercase">{analysis.relationshipType}</span>
+                                        <span className="px-3 py-1 bg-stone-100 rounded text-xs font-bold uppercase">{analysis.aiConfidence} Confidence</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <h3 className="text-xs font-bold font-mono uppercase text-stone-400 mb-2">SUMMARY</h3>
+                                    <p className="text-sm leading-relaxed text-stone-600 text-justify">{analysis.summary}</p>
+                                </div>
+                            </div>
+
+                            {/* Stats */}
+                            <div className="bg-stone-50 p-6 rounded-xl border border-stone-100 mb-10 flex justify-between">
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-stone-800">{chatData.totalMessages.toLocaleString()}</div>
+                                    <div className="text-[10px] text-stone-400 uppercase tracking-wider">Total Pesan</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-stone-800">{chatData.durationString.split(' ')[0]}</div>
+                                    <div className="text-[10px] text-stone-400 uppercase tracking-wider">Hari</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-stone-800">{analysis.phases?.length || 0}</div>
+                                    <div className="text-[10px] text-stone-400 uppercase tracking-wider">Fase</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-stone-800">{analysis.emotions?.length || 0}</div>
+                                    <div className="text-[10px] text-stone-400 uppercase tracking-wider">Emosi</div>
+                                </div>
+                            </div>
+
+                            {/* CONDITIONAL RENDER: Full Report Only */}
+                            {pdfFormat === 'full' && (
+                                <>
+                                    <div className="mb-10">
+                                        <h3 className="text-sm font-bold border-b border-stone-200 pb-2 mb-4 uppercase tracking-wider">Timeline Perjalanan</h3>
+                                        <div className="space-y-4">
+                                            {analysis.phases?.map((p, i) => (
+                                                <div key={i} className="flex gap-4">
+                                                    <div className="w-24 text-xs font-bold text-stone-400 text-right pt-1">{p.period}</div>
+                                                    <div className="flex-1 pb-4 border-l border-stone-200 pl-4 relative">
+                                                        <div className="absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full bg-stone-300"></div>
+                                                        <h4 className="font-bold text-sm text-stone-800">{p.name}</h4>
+                                                        <p className="text-xs text-stone-600 mt-1">{p.description}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="mb-10">
+                                        <h3 className="text-sm font-bold border-b border-stone-200 pb-2 mb-4 uppercase tracking-wider">Analisis Emosional</h3>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {analysis.emotions?.slice(0, 6).map((e, i) => (
+                                                <div key={i} className="bg-stone-50 p-3 rounded-lg flex justify-between items-center">
+                                                    <span className="text-sm font-medium">{e.emotion}</span>
+                                                    <div className="flex gap-1">
+                                                        {[...Array(5)].map((_, idx) => (
+                                                            <div key={idx} className={`w-1.5 h-1.5 rounded-full ${idx < (e.intensity / 2) ? 'bg-stone-800' : 'bg-stone-200'}`}></div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Footer */}
+                            <div className="mt-auto pt-10 border-t-2 border-stone-900 border-dashed text-center">
+                                <p className="text-lg font-serif italic text-stone-600 mb-4">"{analysis.reflection}"</p>
+                                <div className="text-[10px] text-stone-400 uppercase tracking-widest">
+                                    Generated by RecapChat.xyz • Private & Secure Analysis
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- Story Generator Modal ---
+const StoryGeneratorModal = ({ analysis, chatData, onClose }: { analysis: AnalysisResult, chatData: ChatData, onClose: () => void }) => {
+    const [theme, setTheme] = useState<'pastel' | 'dark' | 'mint'>('pastel');
+    const [template, setTemplate] = useState<'classic' | 'mood' | 'quote'>('classic');
+    const [isExporting, setIsExporting] = useState(false);
+    const storyRef = useRef<HTMLDivElement>(null);
+
+    const themes = {
+        pastel: "bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 text-stone-800",
+        dark: "bg-stone-900 text-stone-100",
+        mint: "bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 text-stone-800"
+    };
+
+    const downloadStory = async () => {
+        if (!storyRef.current) return;
+        setIsExporting(true);
+        try {
+            const canvas = await html2canvas(storyRef.current, {
+                scale: 2,
+                useCORS: true,
+                backgroundColor: null
+            });
+            const link = document.createElement('a');
+            link.download = `RecapStory-${new Date().getTime()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex flex-col md:flex-row shadow-2xl overflow-hidden">
+            {/* Left Controls */}
+            <div className="w-full md:w-1/3 bg-white dark:bg-stone-900 p-6 md:p-8 flex flex-col gap-6 border-r border-stone-200 dark:border-stone-800 overflow-y-auto">
+                <div className="flex justify-between items-center">
+                    <h2 className="text-xl font-bold font-heading text-stone-800 dark:text-white">Story Generator</h2>
+                    <button onClick={onClose} className="p-2 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full"><XCircle size={20} /></button>
+                </div>
+
+                <div className="space-y-4">
+                    <label className="text-xs font-bold text-stone-500 uppercase tracking-wider">Pilih Template</label>
+                    <div className="grid grid-cols-3 gap-2">
+                        {['Classic', 'Mood', 'Quote'].map((t) => (
+                            <button
+                                key={t}
+                                onClick={() => setTemplate(t.toLowerCase() as any)}
+                                className={`p-3 rounded-xl border ${template === t.toLowerCase() ? 'border-pastel-primary bg-pastel-primary/10' : 'border-stone-200 dark:border-stone-700'} text-xs font-bold transition-all`}
+                            >
+                                {t}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="space-y-4">
+                    <label className="text-xs font-bold text-stone-500 uppercase tracking-wider">Vibe Warna</label>
+                    <div className="flex gap-3">
+                        <button onClick={() => setTheme('pastel')} className={`w-10 h-10 rounded-full bg-gradient-to-br from-pink-100 to-purple-100 border-2 ${theme === 'pastel' ? 'border-stone-900 scale-110' : 'border-transparent'}`}></button>
+                        <button onClick={() => setTheme('mint')} className={`w-10 h-10 rounded-full bg-gradient-to-br from-emerald-100 to-cyan-100 border-2 ${theme === 'mint' ? 'border-stone-900 scale-110' : 'border-transparent'}`}></button>
+                        <button onClick={() => setTheme('dark')} className={`w-10 h-10 rounded-full bg-stone-900 border-2 ${theme === 'dark' ? 'border-white scale-110' : 'border-transparent'}`}></button>
+                    </div>
+                </div>
+
+                <div className="mt-auto">
+                    <Button onClick={downloadStory} disabled={isExporting} className="w-full py-4 text-lg shadow-xl shadow-purple-500/20">
+                        {isExporting ? 'Generating...' : 'Download Story Image 📸'}
+                    </Button>
+                    <p className="text-[10px] text-center text-stone-400 mt-4">1080x1920 • Siap post ke IG/WA</p>
+                </div>
+            </div>
+
+            {/* Right Preview */}
+            <div className="flex-1 bg-stone-100 dark:bg-black flex items-center justify-center p-8 overflow-hidden relative">
+                <div className="scale-[0.4] md:scale-[0.6] origin-center shadow-2xl rounded-[3rem] overflow-hidden border-8 border-stone-800">
+                    <div
+                        ref={storyRef}
+                        className={`w-[1080px] h-[1920px] ${themes[theme]} relative flex flex-col p-16`}
+                    >
+                        {/* Story Header */}
+                        <div className="flex items-center gap-4 mb-20 opacity-80">
+                            <div className="w-16 h-16 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center">
+                                <Sparkles size={32} className="text-current" />
+                            </div>
+                            <div>
+                                <h3 className="text-3xl font-bold tracking-tight">Recap Chat Story</h3>
+                                <p className="text-xl opacity-70">Generated from WhatsApp</p>
+                            </div>
+                        </div>
+
+                        {/* Content Card */}
+                        <div className="flex-1 flex flex-col justify-center relative">
+                            {/* Decorative Elements */}
+                            <div className="absolute top-0 right-0 w-96 h-96 bg-purple-400/20 rounded-full blur-[100px]"></div>
+                            <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-400/20 rounded-full blur-[100px]"></div>
+
+                            <div className="bg-white/40 dark:bg-black/40 backdrop-blur-xl p-16 rounded-[4rem] border border-white/20 shadow-xl text-center relative z-10">
+                                {template === 'classic' && (
+                                    <>
+                                        <div className="inline-block px-6 py-2 rounded-full bg-white/30 border border-white/20 mb-8 mx-auto text-xl font-bold tracking-widest uppercase">
+                                            {analysis.relationshipType} Recap
+                                        </div>
+                                        <h1 className="text-7xl font-heading font-bold mb-8 leading-tight">
+                                            "{analysis.storyTitle}"
+                                        </h1>
+                                        <div className="w-32 h-2 bg-current opacity-20 mx-auto rounded-full mb-8"></div>
+                                        <p className="text-3xl font-light leading-relaxed opacity-90 max-w-4xl mx-auto">
+                                            {analysis.summary.split('.')[0]}.
+                                        </p>
+                                    </>
+                                )}
+
+                                {template === 'mood' && (
+                                    <>
+                                        <h2 className="text-5xl font-bold mb-12">Mood Meter 🌡️</h2>
+                                        <div className="space-y-8">
+                                            {analysis.emotions?.slice(0, 4).map((e, i) => (
+                                                <div key={i} className="text-left">
+                                                    <div className="flex justify-between text-2xl font-bold mb-2">
+                                                        <span>{e.emotion}</span>
+                                                        <span>{e.intensity}/10</span>
+                                                    </div>
+                                                    <div className="h-6 bg-white/20 rounded-full overflow-hidden">
+                                                        <div style={{ width: `${e.intensity * 10}%` }} className="h-full bg-current opacity-80"></div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+
+                                {template === 'quote' && (
+                                    <>
+                                        <Quote size={80} className="mx-auto mb-10 opacity-50" />
+                                        <p className="text-5xl font-serif italic leading-snug mb-10">
+                                            "{analysis.memorableLines?.[0]?.text || "Chat ini penuh makna."}"
+                                        </p>
+                                        <div className="flex items-center justify-center gap-4">
+                                            <div className="h-px w-20 bg-current opacity-50"></div>
+                                            <span className="text-2xl font-bold uppercase tracking-widest">{analysis.memorableLines?.[0]?.sender || "Unknown"}</span>
+                                            <div className="h-px w-20 bg-current opacity-50"></div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="mt-auto pt-20 text-center relative z-10">
+                            <p className="text-2xl font-bold mb-2">Try yours at recapchat.xyz</p>
+                            <div className="flex justify-center gap-4 text-lg opacity-60">
+                                <span className="flex items-center gap-2"><Lock size={20} /> Private Mode</span>
+                                <span>•</span>
+                                <span>No Data Stored</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // --- Main App Component ---
 
 const App: React.FC = () => {
@@ -460,6 +824,8 @@ const App: React.FC = () => {
     const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
     const [errorDetails, setErrorDetails] = useState<{ userMsg: string, technicalMsg: string } | null>(null);
     const [showStory, setShowStory] = useState(false);
+    const [showPDFGenerator, setShowPDFGenerator] = useState(false);
+    const [showStoryGenerator, setShowStoryGenerator] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [chatFontSize, setChatFontSize] = useState(14);
     const [chatSession, setChatSession] = useState<ChatSession | null>(null);
@@ -835,6 +1201,8 @@ const App: React.FC = () => {
                 <div className="absolute top-4 right-4 z-50"><ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} /></div>
 
                 {showStory && <StoryViewer analysis={analysis} onClose={() => setShowStory(false)} />}
+                {showPDFGenerator && <PDFGeneratorModal analysis={analysis} chatData={chatData} onClose={() => setShowPDFGenerator(false)} />}
+                {showStoryGenerator && <StoryGeneratorModal analysis={analysis} chatData={chatData} onClose={() => setShowStoryGenerator(false)} />}
 
                 {/* --- BAGIAN 1: PEMBUKA (Header Emosional & Overview) --- */}
                 <div className="pt-20 pb-12 px-4 relative z-10">
@@ -873,12 +1241,20 @@ const App: React.FC = () => {
                             ))}
                         </div>
 
-                        <div className="mt-8">
-                            <button onClick={() => setShowStory(true)} className={`inline-flex items-center gap-2 px-6 py-2.5 text-white rounded-full font-bold shadow-lg transition-all text-sm ${theme.bgAccent} ${theme.accent} bg-opacity-100`}>
-                                {/* Button styling hack: using bgAccent usually gives light bg, override with manual colors or use theme specific buttons */}
-                                <div className={`absolute inset-0 rounded-full opacity-20 ${theme.bgAccent}`}></div>
-                                <span className="relative z-10 flex items-center gap-2 text-stone-800 dark:text-stone-200"><Sparkles size={16} /> Buka Story Highlight</span>
+                        <div className="mt-8 flex flex-col md:flex-row items-center justify-center gap-4">
+                            <button onClick={() => setShowPDFGenerator(true)} className="inline-flex items-center gap-3 px-8 py-3 rounded-full font-bold shadow-xl transition-all text-sm bg-stone-900 text-white dark:bg-white dark:text-stone-900 hover:scale-105 active:scale-95 group">
+                                <Download size={18} className="group-hover:-translate-y-1 transition-transform" />
+                                <span>Download Recap PDF</span>
                             </button>
+
+                            <div className="flex gap-2">
+                                <button onClick={() => setShowStoryGenerator(true)} className="inline-flex items-center gap-2 px-5 py-3 rounded-full font-bold shadow-md transition-all text-sm bg-white/80 dark:bg-stone-800/80 backdrop-blur-sm border border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-200 hover:bg-white hover:border-pastel-primary group">
+                                    <Share2 size={16} className="group-hover:rotate-12 transition-transform" /> Share to Story
+                                </button>
+                                <button onClick={() => setShowStory(true)} className="inline-flex items-center gap-2 px-5 py-3 rounded-full font-bold shadow-md transition-all text-sm bg-white/80 dark:bg-stone-800/80 backdrop-blur-sm border border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-200 hover:bg-white hover:border-pastel-primary group">
+                                    <Sparkles size={16} className="text-amber-400 group-hover:scale-125 transition-transform" /> Highlight
+                                </button>
+                            </div>
                         </div>
                     </motion.div>
                 </div>
