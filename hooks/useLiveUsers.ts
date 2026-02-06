@@ -1,9 +1,5 @@
 import { useEffect, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
 import { LiveStats, UserActivityStatus, AppState } from '../types';
-
-// URL Server Backend (Port 3001)
-const SOCKET_URL = 'http://localhost:3001';
 
 export const useLiveUsers = (currentAppState: AppState) => {
   const [stats, setStats] = useState<LiveStats>({
@@ -13,32 +9,11 @@ export const useLiveUsers = (currentAppState: AppState) => {
     reading: 0,
     chatting: 0
   });
-  
-  const [socket, setSocket] = useState<Socket | null>(null);
 
   useEffect(() => {
-    const newSocket = io(SOCKET_URL, {
-      transports: ['websocket'],
-      reconnectionAttempts: 5
-    });
-
-    setSocket(newSocket);
-
-    newSocket.on('live:update', (newStats: LiveStats) => {
-      setStats(newStats);
-    });
-
-    return () => {
-      newSocket.disconnect();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!socket) return;
-
     let status: UserActivityStatus = 'idle';
 
-    // Mapping AppState kamu ke status simple
+    // Mapping AppState ke status
     switch (currentAppState) {
       case AppState.LANDING:
       case AppState.ABOUT_WEBSITE:
@@ -62,18 +37,10 @@ export const useLiveUsers = (currentAppState: AppState) => {
         status = 'idle';
     }
 
-    socket.emit('user:status', status);
+    console.log('Current user status:', status);
+    // Bisa digunakan untuk tracking lokal atau integrasi future jika diperlukan
 
-  }, [currentAppState, socket]);
-
-  // Ping server tiap 20 detik
-  useEffect(() => {
-    if (!socket) return;
-    const interval = setInterval(() => {
-      socket.emit('user:heartbeat');
-    }, 20000);
-    return () => clearInterval(interval);
-  }, [socket]);
+  }, [currentAppState]);
 
   return stats;
-};   
+};
