@@ -9,11 +9,12 @@ interface PDFGeneratorProps {
     chatData: ChatData;
     analysis: AnalysisResult;
     onClose: () => void;
+    theme?: string;
 }
 
 type PDFType = 'ringkas' | 'full';
 
-export const PDFGenerator: React.FC<PDFGeneratorProps> = ({ chatData, analysis, onClose }) => {
+export const PDFGenerator: React.FC<PDFGeneratorProps> = ({ chatData, analysis, onClose, theme = 'pastel' }) => {
     const [selectedType, setSelectedType] = useState<PDFType | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [progress, setProgress] = useState(0);
@@ -312,10 +313,10 @@ export const PDFGenerator: React.FC<PDFGeneratorProps> = ({ chatData, analysis, 
                 <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
                     <div ref={pdfContainerRef}>
                         {selectedType === 'ringkas' && (
-                            <PDFRingkasTemplate chatData={chatData} analysis={analysis} />
+                            <PDFRingkasTemplate chatData={chatData} analysis={analysis} theme={theme} />
                         )}
                         {selectedType === 'full' && (
-                            <PDFFullReportTemplate chatData={chatData} analysis={analysis} />
+                            <PDFFullReportTemplate chatData={chatData} analysis={analysis} theme={theme} />
                         )}
                     </div>
                 </div>

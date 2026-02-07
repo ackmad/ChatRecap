@@ -729,37 +729,78 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
 
                     {/* Scrollable Content */}
                     <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                        {/* Template Selection */}
+                        {/* Template Selection - GRID CARD STYLE */}
                         <div>
-                            <Dropdown
-                                label="✨ Pilih Template"
-                                options={templates.map(t => ({
-                                    id: t.id,
-                                    label: t.name,
-                                    icon: t.icon,
-                                    description: t.desc
-                                }))}
-                                value={selectedTemplate}
-                                onChange={(val) => {
-                                    setSelectedTemplate(val as TemplateType);
-                                    setCurrentSlide(templates.findIndex(t => t.id === val));
-                                }}
-                            />
+                            <h3 className="text-xs font-bold uppercase text-stone-500 mb-3 px-1">✨ Pilih Template</h3>
+                            <div className="grid grid-cols-2 gap-3">
+                                {templates.map((t) => {
+                                    const isSelected = selectedTemplate === t.id;
+                                    return (
+                                        <button
+                                            key={t.id}
+                                            onClick={() => {
+                                                setSelectedTemplate(t.id);
+                                                setCurrentSlide(templates.findIndex(temp => temp.id === t.id));
+                                            }}
+                                            className={`
+                                                relative flex flex-col items-start p-4 rounded-2xl border transition-all text-left h-full
+                                                ${isSelected
+                                                    ? 'bg-white dark:bg-stone-800 border-purple-500 shadow-[0_4px_12px_rgba(168,85,247,0.15)] ring-1 ring-purple-500 transform scale-[1.02]'
+                                                    : 'bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700 hover:border-purple-300 dark:hover:border-purple-700 hover:shadow-sm'
+                                                }
+                                            `}
+                                        >
+                                            {/* Icon/Emoji */}
+                                            <div className="text-3xl mb-3">
+                                                {t.emoji}
+                                            </div>
+
+                                            {/* Title */}
+                                            <div className={`text-sm font-bold mb-1 leading-tight ${isSelected ? 'text-purple-700 dark:text-purple-300' : 'text-stone-800 dark:text-stone-200'}`}>
+                                                {t.name}
+                                            </div>
+
+                                            {/* Desc */}
+                                            <div className="text-[11px] text-stone-500 dark:text-stone-400 leading-tight">
+                                                {t.desc}
+                                            </div>
+
+                                            {/* Selection Badge (Checkmark) */}
+                                            {isSelected && (
+                                                <div className="absolute top-3 right-3 w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center text-white shadow-sm ring-2 ring-white dark:ring-stone-800">
+                                                    <Check size={12} strokeWidth={3} />
+                                                </div>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
 
-                        {/* Theme Selection */}
+                        {/* Theme Selection - CHANGED: List instead of Dropdown */}
                         <div>
-                            <Dropdown
-                                label="🎨 Pilih Tema Warna"
-                                options={themes.map(t => ({
-                                    id: t.id,
-                                    label: t.name,
-                                    leftContent: <div className="w-5 h-5 rounded-full ring-1 ring-stone-200 dark:ring-stone-600 shadow-sm" style={{ background: t.gradient }} />
-                                }))}
-                                value={selectedTheme}
-                                onChange={(val) => setSelectedTheme(val as ThemeType)}
-                            />
+                            <h3 className="text-xs font-bold uppercase text-stone-500 mb-3 px-1">🎨 Pilih Tema Warna</h3>
+                            <div className="grid grid-cols-2 gap-2">
+                                {themes.map((t) => (
+                                    <button
+                                        key={t.id}
+                                        onClick={() => setSelectedTheme(t.id)}
+                                        className={`flex items-center gap-2 p-2 rounded-lg border transition-all text-left
+                                            ${selectedTheme === t.id
+                                                ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500 ring-1 ring-purple-500'
+                                                : 'bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700 hover:border-stone-300'
+                                            }`}
+                                    >
+                                        <div className="w-6 h-6 rounded-full shadow-sm flex-shrink-0" style={{ background: t.gradient }} />
+                                        <span className={`text-xs font-medium ${selectedTheme === t.id ? 'text-purple-700 dark:text-purple-200' : 'text-stone-600 dark:text-stone-300'}`}>
+                                            {t.name}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
+
+                        <div className="h-px bg-stone-200 dark:bg-stone-800 my-4" />
 
                         {/* Privacy & Download Options */}
                         <div className="space-y-4">

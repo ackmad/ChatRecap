@@ -1599,7 +1599,7 @@ const App: React.FC = () => {
                 <div className="absolute top-4 right-4 z-50"><ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} /></div>
 
                 {showStory && <StoryViewer analysis={analysis} onClose={() => setShowStory(false)} />}
-                {showPDFGenerator && <PDFGenerator chatData={chatData} analysis={analysis} onClose={() => setShowPDFGenerator(false)} />}
+                {showPDFGenerator && <PDFGenerator chatData={chatData} analysis={analysis} onClose={() => setShowPDFGenerator(false)} theme={isDarkMode ? 'dark' : 'pastel'} />}
                 {showStoryGenerator && (
                     <AdvancedStoryGenerator
                         analysisResult={analysis}
