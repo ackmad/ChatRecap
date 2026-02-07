@@ -52,6 +52,9 @@ export interface ChatData {
       messageCount: number;
       wordCount: number;
       averageLength: number;
+      name?: string;
+      avgReplyTimeMinutes?: number;
+      initiationCount?: number;
     };
   };
   dailyDistribution: { date: string; count: number; breakdown: any }[];
@@ -63,6 +66,11 @@ export interface ChatData {
     durationDays: number;
     breaker: string;
   }[];
+  activeDays?: number;
+  avgMessagesPerDay?: number;
+  mediaCount?: number;
+  busiestDay?: { date: string; count: number };
+  busiestHour?: number;
 }
 
 export interface AnalysisResult {
@@ -129,4 +137,49 @@ export interface AnalysisResult {
     intensity: number;
     description: string;
   }[];
+
+  // For Story Generator
+  mood?: string;
+  topics?: {
+    name: string;
+    percentage: number;
+  }[];
+}
+
+// Live Activity Types
+export interface LiveStats {
+  activeUsers: number;
+  totalAnalyses: number;
+  averageMessages: number;
+  online?: number;
+  uploading?: number;
+  analyzing?: number;
+  chatting?: number;
+  reading?: number;
+}
+
+export type UserActivityStatus = 'active' | 'idle' | 'offline' | 'uploading' | 'analyzing' | 'reading' | 'chatting';
+
+
+// Chat Parser Types
+export interface ParticipantStats {
+  messageCount: number;
+  wordCount: number;
+  averageLength: number;
+  name?: string;
+  avgReplyTimeMinutes?: number;
+  initiationCount?: number;
+}
+
+export interface SilencePeriod {
+  startDate: Date;
+  endDate: Date;
+  durationDays: number;
+  breaker: string;
+}
+
+export interface DailyStats {
+  date: string;
+  count: number;
+  breakdown: any;
 }

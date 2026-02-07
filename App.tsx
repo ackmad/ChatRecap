@@ -4,10 +4,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AreaChart, Area, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import ReactMarkdown from 'react-markdown';
 import { parseWhatsAppChat } from './utils/chatParser';
-import { analyzeChatWithGemini, createChatSession } from './services/geminiService';
+import { analyzeChatWithGemini, createChatSession, sendChatMessageWithRetry } from './services/geminiService';
 import { AppState, ChatData, AnalysisResult, ChatMessage, Message, RelationshipType } from './types';
 import { Layout } from './components/Layout';
 import { Button } from './components/Button';
+import { AdvancedStoryGenerator } from './components/AdvancedStoryGenerator';
 import { ChatSession } from "@google/generative-ai";
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -205,17 +206,19 @@ const TypewriterText = ({ text, onComplete, speed = 10 }: { text: string; onComp
 };
 
 const Footer = ({ setAppState }: { setAppState: (state: AppState) => void }) => (
-    <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} className="mt-auto py-8 text-center text-xs text-txt-sub dark:text-stone-500 border-t border-stone-100 dark:border-stone-800 w-full bg-white/50 dark:bg-stone-900/50 backdrop-blur-sm">
-        <div className="flex justify-center gap-6 mb-4 font-medium">
-            <button onClick={() => setAppState(AppState.ABOUT_WEBSITE)} className="hover:text-pastel-primary transition-colors">Tentang Website</button>
-            <span className="opacity-30">|</span>
-            <button onClick={() => setAppState(AppState.ABOUT_CREATOR)} className="hover:text-pastel-primary transition-colors">Tentang Pembuat</button>
-            <span className="opacity-30">|</span>
-            <button className="hover:text-pastel-primary transition-colors">Privacy Policy</button>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-            <p className="opacity-70 font-heading tracking-wider">Dibuat oleh ACKMAD ELFAN PURNAMA - SEJAK 2026</p>
-            <span className="px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-[10px] font-mono opacity-60">{APP_VERSION}</span>
+    <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} className="w-full mt-auto py-8 text-center text-xs text-txt-sub dark:text-stone-500 border-t border-stone-100 dark:border-stone-800 bg-white/50 dark:bg-stone-900/50 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto px-4">
+            <div className="flex justify-center gap-6 mb-4 font-medium">
+                <button onClick={() => setAppState(AppState.ABOUT_WEBSITE)} className="hover:text-pastel-primary transition-colors">Tentang Website</button>
+                <span className="opacity-30">|</span>
+                <button onClick={() => setAppState(AppState.ABOUT_CREATOR)} className="hover:text-pastel-primary transition-colors">Tentang Pembuat</button>
+                <span className="opacity-30">|</span>
+                <button className="hover:text-pastel-primary transition-colors">Privacy Policy</button>
+            </div>
+            <div className="flex flex-col items-center gap-2">
+                <p className="opacity-70 font-heading tracking-wider">Dibuat oleh ACKMAD ELFAN PURNAMA - SEJAK 2026</p>
+                <span className="px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-[10px] font-mono opacity-60">{APP_VERSION}</span>
+            </div>
         </div>
     </motion.div>
 );
@@ -834,6 +837,7 @@ const App: React.FC = () => {
     const [isTyping, setIsTyping] = useState(false);
     const [isAnalysisComplete, setIsAnalysisComplete] = useState(false);
     const [aiStatusLogs, setAiStatusLogs] = useState<string[]>([]);
+    const [showDonationPopup, setShowDonationPopup] = useState(false);
 
     const chatEndRef = useRef<HTMLDivElement>(null);
     const [evidenceMessages, setEvidenceMessages] = useState<Message[]>([]);
@@ -847,6 +851,21 @@ const App: React.FC = () => {
             document.body.style.backgroundColor = '#FFFDFB'; // pastel-bgStart
         }
     }, [isDarkMode]);
+
+    // Show donation popup on first visit
+    useEffect(() => {
+        const hasSeenDonation = localStorage.getItem('hasSeenDonation');
+        if (!hasSeenDonation && appState === AppState.LANDING) {
+            setTimeout(() => setShowDonationPopup(true), 2000);
+        }
+    }, [appState]);
+
+    const closeDonationPopup = (dontShowAgain: boolean = false) => {
+        setShowDonationPopup(false);
+        if (dontShowAgain) {
+            localStorage.setItem('hasSeenDonation', 'true');
+        }
+    };
 
     const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
@@ -917,17 +936,50 @@ const App: React.FC = () => {
     };
 
     const handleSendMessage = async () => {
-        if (!userInput.trim() || !chatSession) return;
+        if (!userInput.trim()) return;
+
+        // Check if we have chatData
+        if (!chatData || !chatData.messages || chatData.messages.length === 0) {
+            setConversation(prev => [...prev, {
+                role: 'model',
+                text: "Maaf, data chat belum tersedia. Silakan upload file chat terlebih dahulu."
+            }]);
+            return;
+        }
+
         const currentMsg = userInput;
         setUserInput('');
         setConversation(prev => [...prev, { role: 'user', text: currentMsg }]);
         setIsTyping(true);
+
         try {
-            const result = await chatSession.sendMessage(currentMsg);
-            const text = result.response.text();
+            // Use retry function with API key rotation
+            const text = await sendChatMessageWithRetry(
+                chatData.messages,
+                conversation,
+                currentMsg
+            );
             setConversation(prev => [...prev, { role: 'model', text }]);
-        } catch (e) {
-            setConversation(prev => [...prev, { role: 'model', text: "Terjadi kesalahan koneksi." }]);
+        } catch (e: any) {
+            console.error('Chat error:', e);
+
+            let errorMsg = "Terjadi kesalahan. Silakan coba lagi.";
+            const errMessage = e?.message || e?.toString() || "";
+
+            // Identifikasi jenis error
+            if (errMessage.includes('429') || errMessage.includes('quota') || errMessage.includes('RESOURCE_EXHAUSTED')) {
+                errorMsg = "⚠️ Semua API sedang sibuk atau quota habis. Silakan tunggu beberapa saat dan coba lagi.";
+            } else if (errMessage.includes('403') || errMessage.includes('API key') || errMessage.includes('key not valid') || errMessage.includes('leaked')) {
+                errorMsg = "🔑 Semua API key tidak valid atau dilaporkan bocor. Silakan hubungi developer untuk mengganti API key.";
+            } else if (errMessage.includes('400') || errMessage.includes('invalid')) {
+                errorMsg = "❌ Permintaan tidak valid. Coba dengan pertanyaan yang lebih sederhana.";
+            } else if (errMessage.includes('network') || errMessage.includes('fetch')) {
+                errorMsg = "🌐 Koneksi internet bermasalah. Periksa koneksi Anda dan coba lagi.";
+            } else if (errMessage.includes('blocked') || errMessage.includes('safety')) {
+                errorMsg = "🛡️ Pertanyaan Anda diblokir oleh filter keamanan. Coba dengan kata-kata yang berbeda.";
+            }
+
+            setConversation(prev => [...prev, { role: 'model', text: errorMsg }]);
         } finally { setIsTyping(false); }
     };
 
@@ -946,10 +998,30 @@ const App: React.FC = () => {
     // --- Views ---
 
     const renderLanding = () => (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-stone-950 dark:via-stone-900 dark:to-stone-950 flex flex-col relative overflow-hidden transition-colors duration-500">
-            <div className="absolute top-4 right-4 z-50"><ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} /></div>
+        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-stone-950 dark:via-purple-950/20 dark:to-stone-900 flex flex-col relative overflow-hidden transition-colors duration-500">
 
-            {/* Hero Section */}
+            {/* Navbar Fixed */}
+            <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 dark:bg-stone-900/90 backdrop-blur-md border-b border-stone-200 dark:border-stone-800 px-6 py-4 shadow-sm">
+                <div className="max-w-7xl mx-auto flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Sparkles className="text-pastel-primary" size={24} />
+                        <span className="font-bold text-lg text-stone-800 dark:text-stone-100">Recap Chat</span>
+                    </div>
+                    <div className="hidden md:flex items-center gap-8 text-sm font-medium text-stone-600 dark:text-stone-400">
+                        <button onClick={() => setAppState(AppState.LANDING)} className="hover:text-pastel-primary transition-colors">Home</button>
+                        <a href="#fitur" className="hover:text-pastel-primary transition-colors">Fitur</a>
+                        <a href="#cara-kerja" className="hover:text-pastel-primary transition-colors">Cara Kerja</a>
+                        <button onClick={() => setAppState(AppState.ABOUT_WEBSITE)} className="hover:text-pastel-primary transition-colors">Tentang Website</button>
+                        <button onClick={() => setAppState(AppState.ABOUT_CREATOR)} className="hover:text-pastel-primary transition-colors">Tentang Pembuat</button>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
+                        <Button onClick={() => setAppState(AppState.UPLOAD)} className="!px-6 !py-2 text-sm">Mulai Rekap</Button>
+                    </div>
+                </div>
+            </nav>
+
+            {/* Hero Section - JANGAN DIUBAH TEKSNYA */}
             <section className="relative pt-32 pb-20 px-4 text-center z-10 max-w-5xl mx-auto">
                 {/* Floating Elements */}
                 <motion.div animate={{ y: [0, -20, 0] }} transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }} className="absolute top-20 left-10 text-pastel-primary opacity-50 hidden md:block"><MessageCircle size={48} /></motion.div>
@@ -978,133 +1050,384 @@ const App: React.FC = () => {
                         <span className="relative z-10 flex items-center gap-3">🚀 Mulai Recap Sekarang <ArrowRight size={24} className="group-hover:translate-x-1 transition-transform" /></span>
                     </Button>
                     <button onClick={() => setAppState(AppState.ABOUT_WEBSITE)} className="text-stone-500 dark:text-stone-400 hover:text-pastel-primary transition-colors text-sm font-bold flex items-center gap-2">
-                        📌 Lihat Cara Kerja
+                        📌 Lihat Contoh Rekap
                     </button>
                 </motion.div>
             </section>
 
-            {/* Problem Section */}
+            {/* Section 1: Masalah yang Dialami Banyak Orang (Relatable Section) */}
             <section className="py-20 px-4 bg-white/50 dark:bg-stone-900/50 backdrop-blur-sm">
-                <div className="max-w-4xl mx-auto text-center">
-                    <h2 className="text-3xl font-bold text-stone-800 dark:text-stone-100 mb-6 font-heading">Kadang kita gak lupa…<br />kita cuma capek scroll.</h2>
-                    <p className="text-lg text-stone-600 dark:text-stone-400 leading-relaxed max-w-2xl mx-auto">
-                        Pernah gak sih kamu pengen ngerti hubungan kamu sama seseorang sebenarnya kayak gimana, tapi chat-nya udah ribuan? Mau cari momen penting, tapi scroll terus capek. Mau inget kapan mulai berubah, tapi udah tenggelam di tumpukan chat.
-                        <br /><br />
-                        Recap Chat dibuat buat itu. Biar kamu gak perlu baca semuanya dari awal, tapi tetap bisa memahami isi percakapannya dengan cara yang jelas.
-                    </p>
-                </div>
-            </section>
-
-            {/* Features Section */}
-            <section className="py-20 px-4 bg-white/80 dark:bg-stone-950/80">
-                <div className="max-w-6xl mx-auto text-center">
-                    <h2 className="text-3xl font-bold text-stone-800 dark:text-stone-100 mb-12 font-heading">Recap Chat bukan sekadar rangkuman.<br /><span className="text-pastel-primary">Ini peta percakapan.</span></h2>
-
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="max-w-6xl mx-auto">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl md:text-4xl font-bold text-stone-800 dark:text-stone-100 mb-4 font-heading">Kadang kita gak lupa… kita cuma capek scroll.</h2>
+                        <p className="text-lg text-stone-600 dark:text-stone-400 max-w-2xl mx-auto leading-relaxed">Chat panjang itu bukan masalah, tapi kalau harus cari satu pesan penting dari ratusan bubble… itu baru menyiksa. Recap Chat hadir buat bantu kamu merapikan semuanya dalam sekali upload.</p>
+                    </div>
+                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
                         {[
-                            { title: "📊 Ringkasan Topik Percakapan", desc: "Lihat chat kalian paling sering bahas apa: sekolah, kerja, candaan, konflik, atau hal random lainnya." },
-                            { title: "🕒 Timeline Chat yang Jelas", desc: "Kamu bisa lihat kapan chat rame banget, kapan mulai jarang, dan kapan percakapan berubah." },
-                            { title: "😊 Analisis Emosi & Mood", desc: "Bukan lebay, tapi cukup untuk memberi gambaran: chat kalian dominan hangat, tegang, awkward, atau netral." },
-                            { title: "⚖️ Balance Chat", desc: "Siapa yang lebih sering mulai chat duluan? Siapa yang paling banyak ngomong? Siapa yang lebih cepat membalas?" },
-                            { title: "🧠 Tanya AI Lebih Dalam", desc: "Kamu bebas tanya apa pun, misalnya: 'Kenapa di fase ini chat jadi dingin?', 'Topik apa yang bikin suasana berubah?', dll." }
-                        ].map((feature, i) => (
-                            <motion.div whileHover={{ scale: 1.02 }} key={i} className={`p-8 rounded-3xl flex flex-col items-center text-center shadow-sm border border-stone-100 dark:border-stone-700 bg-white dark:bg-stone-800`}>
-                                <h3 className="text-lg font-bold text-stone-800 dark:text-stone-100 mb-3">{feature.title}</h3>
-                                <p className="text-sm text-stone-500 dark:text-stone-400 leading-relaxed">{feature.desc}</p>
+                            { icon: "📱", text: "Scroll ribuan chat cuma buat cari satu kalimat." },
+                            { icon: "🔍", text: "Penasaran topik apa yang paling sering muncul." },
+                            { icon: "🤔", text: "Pengen ngerti pola komunikasi tapi bingung mulai dari mana." },
+                            { icon: "💭", text: "Mau refleksi, tapi chat terlalu berantakan." }
+                        ].map((item, i) => (
+                            <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }} className="bg-white dark:bg-stone-800 p-6 rounded-2xl shadow-sm border border-stone-100 dark:border-stone-700 flex items-start gap-4">
+                                <div className="text-3xl shrink-0">{item.icon}</div>
+                                <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">{item.text}</p>
                             </motion.div>
                         ))}
                     </div>
                 </div>
             </section>
 
-            {/* Example Questions Section */}
-            <section className="py-20 px-4">
-                <div className="max-w-4xl mx-auto text-center">
-                    <h2 className="text-3xl font-bold text-stone-800 dark:text-stone-100 mb-10 font-heading">Kamu bisa nanya apa aja. Serius.</h2>
-
-                    <div className="flex flex-wrap justify-center gap-4 mb-10">
+            {/* Section 3: Kenapa Recap Chat Berbeda? (Value Proposition) */}
+            <section className="py-20 px-4 bg-white/50 dark:bg-stone-900/50 backdrop-blur-sm">
+                <div className="max-w-6xl mx-auto">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl md:text-4xl font-bold text-stone-800 dark:text-stone-100 mb-4 font-heading">Bukan cuma rangkuman. Ini refleksi.</h2>
+                        <p className="text-lg text-stone-600 dark:text-stone-400 max-w-2xl mx-auto leading-relaxed">Recap Chat bukan sekadar meringkas chat. Website ini dibuat untuk membantu kamu melihat percakapan dari sudut pandang yang lebih jernih — tanpa menghakimi, tanpa mengarang, dan tanpa drama berlebihan.</p>
+                    </div>
+                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
                         {[
-                            "💬 “Di fase mana chat ini mulai berubah?”",
-                            "💬 “Topik apa yang paling sering muncul?”",
-                            "💬 “Kenapa setelah tanggal itu chat jadi dingin?”",
-                            "💬 “Siapa yang lebih sering effort duluan?”",
-                            "💬 “Ada momen yang terasa awkward gak?”",
-                            "💬 “Apa yang paling sering bikin salah paham?”"
-                        ].map((q, i) => (
-                            <div key={i} className="bg-white dark:bg-stone-800 px-6 py-3 rounded-full shadow-sm text-stone-600 dark:text-stone-300 border border-stone-100 dark:border-stone-700 text-sm italic">
-                                {q}
-                            </div>
+                            { icon: Scale, title: "Netral & Realistis", desc: "AI tidak memaksakan cerita yang tidak ada di chat.", gradient: "from-blue-50 to-cyan-50 dark:from-blue-900/10 dark:to-cyan-900/10" },
+                            { icon: BookOpen, title: "Bisa Dibaca Seperti Album Kenangan", desc: "Bukan data kaku, tapi recap yang terasa hidup.", gradient: "from-purple-50 to-pink-50 dark:from-purple-900/10 dark:to-pink-900/10" },
+                            { icon: Eye, title: "Visual Nyaman", desc: "Tampilan soft, rapi, dan enak dilihat.", gradient: "from-emerald-50 to-teal-50 dark:from-emerald-900/10 dark:to-teal-900/10" },
+                            { icon: MessageSquare, title: "Bisa Tanya AI Langsung", desc: "Kamu bisa eksplor percakapan lebih dalam kapan pun.", gradient: "from-orange-50 to-amber-50 dark:from-orange-900/10 dark:to-amber-900/10" }
+                        ].map((item, i) => (
+                            <motion.div
+                                key={i}
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                whileInView={{ opacity: 1, scale: 1 }}
+                                viewport={{ once: true }}
+                                transition={{ delay: i * 0.1 }}
+                                whileHover={{ y: -5 }}
+                                className={`bg-gradient-to-br ${item.gradient} backdrop-blur-md p-6 rounded-3xl border border-white/40 dark:border-stone-700/40 shadow-lg hover:shadow-xl transition-all`}
+                            >
+                                <item.icon className="text-stone-700 dark:text-stone-300 mb-4" size={32} />
+                                <h3 className="text-lg font-bold text-stone-800 dark:text-stone-100 mb-2">{item.title}</h3>
+                                <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">{item.desc}</p>
+                            </motion.div>
                         ))}
                     </div>
-
-                    <p className="text-stone-500 dark:text-stone-400 text-sm">AI akan menjawab berdasarkan isi chat kamu.<br />Bukan menebak-nebak. Bukan mengarang.</p>
                 </div>
             </section>
 
-            {/* How It Works Section */}
-            <section className="py-20 px-4 bg-white/50 dark:bg-stone-900/50 backdrop-blur-sm">
+            {/* Section 4: Fitur Utama (8 Fitur Lengkap) */}
+            <section id="fitur" className="py-20 px-4 bg-white/80 dark:bg-stone-950/80">
+                <div className="max-w-6xl mx-auto">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl md:text-4xl font-bold text-stone-800 dark:text-stone-100 mb-4 font-heading">Fitur yang bikin chat kamu jadi lebih bermakna.</h2>
+                        <p className="text-lg text-stone-600 dark:text-stone-400 max-w-2xl mx-auto">Bukan cuma baca ulang chat. Tapi memahami isinya.</p>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {[
+                            { icon: FileText, title: "Chat Summary", desc: "Ringkasan percakapan dari awal sampai akhir dengan gaya natural.", color: "purple" },
+                            { icon: Clock, title: "Timeline Percakapan", desc: "Lihat fase hubungan dari waktu ke waktu.", color: "blue" },
+                            { icon: Heart, title: "Analisis Emosi", desc: "Deteksi mood dominan dan perubahan suasana.", color: "pink" },
+                            { icon: Tag, title: "Topik Dominan", desc: "Ketahui hal-hal yang paling sering dibahas.", color: "green" },
+                            { icon: Sparkles, title: "Key Moments", desc: "Tandai momen penting yang terasa berkesan atau berubah drastis.", color: "yellow" },
+                            { icon: BarChart2, title: "Communication Style", desc: "Analisis siapa yang lebih aktif, lebih ekspresif, atau lebih sering memulai.", color: "indigo" },
+                            { icon: Quote, title: "Memorable Lines", desc: "Kalimat-kalimat unik yang bikin ketawa atau bikin inget.", color: "rose" },
+                            { icon: Brain, title: "Ask AI Mode", desc: "Tanya AI tentang chat kamu secara bebas dan lebih personal.", color: "orange" }
+                        ].map((feature, i) => (
+                            <motion.div
+                                key={i}
+                                initial={{ opacity: 0, y: 20 }}
+                                whileInView={{ opacity: 1, y: 0 }}
+                                viewport={{ once: true }}
+                                transition={{ delay: i * 0.08 }}
+                                whileHover={{ scale: 1.03 }}
+                                className="bg-white dark:bg-stone-800 p-6 rounded-3xl shadow-sm border border-stone-100 dark:border-stone-700 group hover:shadow-lg transition-all"
+                            >
+                                <div className={`w-12 h-12 rounded-2xl bg-${feature.color}-100 dark:bg-${feature.color}-900/20 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                                    <feature.icon className={`text-${feature.color}-600 dark:text-${feature.color}-400`} size={24} />
+                                </div>
+                                <h3 className="text-lg font-bold text-stone-800 dark:text-stone-100 mb-2">{feature.title}</h3>
+                                <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">{feature.desc}</p>
+                            </motion.div>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* Section 2: Cara Kerja Recap Chat (Step-by-Step) */}
+            <section id="cara-kerja" className="py-20 px-4 bg-white/80 dark:bg-stone-950/80">
                 <div className="max-w-5xl mx-auto">
                     <div className="text-center mb-12">
-                        <h2 className="text-3xl font-bold text-stone-800 dark:text-stone-100 font-heading">Cuma 3 langkah. Gak ribet.</h2>
+                        <h2 className="text-3xl md:text-4xl font-bold text-stone-800 dark:text-stone-100 font-heading mb-4">Cara kerja Recap Chat itu simpel banget.</h2>
+                        <p className="text-lg text-stone-600 dark:text-stone-400">Cuma 4 langkah. Tanpa ribet. Tanpa drama.</p>
                     </div>
-                    <div className="grid md:grid-cols-3 gap-8">
+                    <div className="grid md:grid-cols-2 gap-8 relative">
+                        {/* Garis penghubung */}
+                        <div className="hidden md:block absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-to-r from-pastel-primary/20 via-pastel-primary to-pastel-primary/20 -translate-y-1/2 z-0"></div>
+
                         {[
-                            { icon: Smartphone, title: "1) Export chat WhatsApp", desc: "User export chat WhatsApp dalam format .txt (tanpa media agar proses lebih cepat)." },
-                            { icon: Upload, title: "2) Upload ke Recap Chat", desc: "User upload file chat ke website melalui drag & drop atau klik upload." },
-                            { icon: BookOpen, title: "3) Lihat recap + tanya AI", desc: "Website menampilkan ringkasan chat dalam bentuk data visual, lalu user bisa tanya AI secara bebas." }
+                            { num: "01", icon: Smartphone, title: "Export Chat WhatsApp", desc: "Ambil file chat langsung dari WhatsApp kamu." },
+                            { num: "02", icon: Upload, title: "Upload File ke Recap Chat", desc: "Masukkan file .txt chat ke sistem." },
+                            { num: "03", icon: Brain, title: "AI Menganalisis Percakapan", desc: "AI membaca pola, emosi, timeline, dan topik." },
+                            { num: "04", icon: Sparkles, title: "Hasil Recap Langsung Muncul", desc: "Kamu bisa lihat recap lengkap + tanya AI lebih dalam." }
                         ].map((step, i) => (
                             <motion.div
                                 key={i}
                                 initial={{ opacity: 0, y: 30 }}
                                 whileInView={{ opacity: 1, y: 0 }}
                                 viewport={{ once: true }}
-                                transition={{ delay: i * 0.2 }}
-                                className="bg-white dark:bg-stone-800 p-8 rounded-3xl shadow-lg shadow-purple-100/50 dark:shadow-none border border-stone-100 dark:border-stone-700 text-center group hover:-translate-y-2 transition-transform duration-300"
+                                transition={{ delay: i * 0.15 }}
+                                className="bg-white dark:bg-stone-800 p-8 rounded-3xl shadow-lg border border-stone-100 dark:border-stone-700 relative z-10 group hover:shadow-xl hover:-translate-y-1 transition-all"
                             >
-                                <div className="w-16 h-16 mx-auto bg-pastel-secondary dark:bg-stone-700 rounded-2xl flex items-center justify-center text-pastel-secondaryText mb-6 group-hover:scale-110 transition-transform">
-                                    <step.icon size={32} />
+                                <div className="flex items-start gap-6">
+                                    <div className="text-6xl font-bold text-pastel-primary/20 dark:text-pastel-primary/10 font-heading shrink-0">{step.num}</div>
+                                    <div className="flex-1">
+                                        <div className="w-14 h-14 rounded-2xl bg-pastel-secondary dark:bg-stone-700 flex items-center justify-center text-pastel-secondaryText mb-4 group-hover:scale-110 transition-transform">
+                                            <step.icon size={28} />
+                                        </div>
+                                        <h3 className="text-xl font-bold text-stone-800 dark:text-stone-100 mb-3">{step.title}</h3>
+                                        <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">{step.desc}</p>
+                                    </div>
                                 </div>
-                                <h3 className="text-lg font-bold text-stone-800 dark:text-stone-100 mb-3">{step.title}</h3>
-                                <p className="text-stone-500 dark:text-stone-400 text-sm">{step.desc}</p>
                             </motion.div>
                         ))}
                     </div>
                 </div>
             </section>
 
-            {/* Trust & Privacy Section */}
-            <section className="py-20 px-4">
-                <div className="max-w-4xl mx-auto bg-gradient-to-r from-white to-purple-50 dark:from-stone-800 dark:to-stone-800/80 p-10 md:p-16 rounded-[3rem] shadow-xl border border-white dark:border-stone-700 text-center relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-pastel-primary/10 rounded-full blur-3xl pointer-events-none"></div>
-
-                    <ShieldCheck size={64} className="text-emerald-400 mx-auto mb-6" />
-                    <h2 className="text-3xl md:text-4xl font-bold text-stone-800 dark:text-stone-100 mb-6 font-heading">Privasi itu serius. Dan Recap Chat paham itu.</h2>
-                    <p className="text-lg text-stone-600 dark:text-stone-300 mb-8 leading-relaxed max-w-2xl mx-auto">
-                        Chat itu adalah data pribadi dan tidak boleh diperlakukan sembarangan.
-                        Recap Chat dibuat dengan prinsip bahwa file kamu hanya dipakai untuk analisis sementara, bukan disimpan untuk jangka panjang.
-                    </p>
-
-                    <div className="flex flex-col gap-3 max-w-md mx-auto mb-8 text-left">
-                        <div className="flex items-center gap-3 text-stone-600 dark:text-stone-300 text-sm"><CheckCircle size={16} className="text-emerald-500" /> File chat tidak disimpan permanen</div>
-                        <div className="flex items-center gap-3 text-stone-600 dark:text-stone-300 text-sm"><CheckCircle size={16} className="text-emerald-500" /> Tidak ada database untuk menyimpan isi chat</div>
-                        <div className="flex items-center gap-3 text-stone-600 dark:text-stone-300 text-sm"><CheckCircle size={16} className="text-emerald-500" /> Data hanya aktif selama sesi berlangsung</div>
-                        <div className="flex items-center gap-3 text-stone-600 dark:text-stone-300 text-sm"><CheckCircle size={16} className="text-emerald-500" /> Setelah sesi selesai, data otomatis hilang</div>
-                        <div className="flex items-center gap-3 text-stone-600 dark:text-stone-300 text-sm"><CheckCircle size={16} className="text-emerald-500" /> User bisa menghapus sesi kapan saja</div>
+            {/* Section 5: Highlight Fitur Tanya AI (Main Attraction) */}
+            <section className="py-20 px-4 bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50 dark:from-purple-950/20 dark:via-pink-950/20 dark:to-orange-950/20">
+                <div className="max-w-5xl mx-auto">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl md:text-4xl font-bold text-stone-800 dark:text-stone-100 mb-4 font-heading">Kamu bisa nanya AI apa pun tentang chat itu.</h2>
+                        <p className="text-lg text-stone-600 dark:text-stone-400 max-w-2xl mx-auto leading-relaxed">Kadang kita gak butuh rangkuman doang. Kita butuh jawaban. Recap Chat bisa jadi teman refleksi yang netral, santai, dan gak menghakimi.</p>
                     </div>
 
-                    <p className="text-stone-500 text-sm font-medium">Recap Chat tidak menyimpan cerita kamu. Recap Chat hanya membantu kamu memahaminya.</p>
+                    <div className="grid md:grid-cols-2 gap-8 items-center">
+                        {/* Left: Example Questions */}
+                        <div className="space-y-4">
+                            <h3 className="text-xl font-bold text-stone-800 dark:text-stone-100 mb-6">Contoh pertanyaan yang bisa kamu tanyakan:</h3>
+                            {[
+                                "Topik apa yang paling sering kita bahas?",
+                                "Apakah hubungan ini terlihat sehat?",
+                                "Siapa yang lebih sering mulai chat duluan?",
+                                "Apa momen yang paling penting?",
+                                "Kenapa vibe chat ini terasa berubah?"
+                            ].map((q, i) => (
+                                <motion.div
+                                    key={i}
+                                    initial={{ opacity: 0, x: -20 }}
+                                    whileInView={{ opacity: 1, x: 0 }}
+                                    viewport={{ once: true }}
+                                    transition={{ delay: i * 0.1 }}
+                                    className="flex items-start gap-3 bg-white/60 dark:bg-stone-800/60 backdrop-blur-sm p-4 rounded-2xl border border-stone-200 dark:border-stone-700 hover:border-pastel-primary transition-colors"
+                                >
+                                    <MessageCircle className="text-pastel-primary shrink-0 mt-0.5" size={20} />
+                                    <p className="text-sm text-stone-700 dark:text-stone-300 font-medium">{q}</p>
+                                </motion.div>
+                            ))}
+                        </div>
+
+                        {/* Right: Chat Preview */}
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            whileInView={{ opacity: 1, scale: 1 }}
+                            viewport={{ once: true }}
+                            className="bg-white dark:bg-stone-800 p-6 rounded-3xl shadow-xl border border-stone-200 dark:border-stone-700"
+                        >
+                            <div className="flex items-center gap-3 mb-6 pb-4 border-b border-stone-200 dark:border-stone-700">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pastel-primary to-pink-400 flex items-center justify-center">
+                                    <Bot className="text-white" size={20} />
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-stone-800 dark:text-stone-100">Recap AI</h4>
+                                    <p className="text-xs text-stone-500">Siap menjawab pertanyaan kamu</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                {/* User Bubble */}
+                                <div className="flex justify-end">
+                                    <div className="bg-pastel-primary text-white px-4 py-3 rounded-2xl rounded-tr-sm max-w-[80%]">
+                                        <p className="text-sm">Siapa yang lebih sering mulai chat?</p>
+                                    </div>
+                                </div>
+
+                                {/* AI Bubble */}
+                                <div className="flex justify-start">
+                                    <div className="bg-stone-100 dark:bg-stone-700 px-4 py-3 rounded-2xl rounded-tl-sm max-w-[85%]">
+                                        <p className="text-sm text-stone-700 dark:text-stone-300">Berdasarkan analisis chat, kamu lebih sering memulai percakapan (62%). Dia lebih sering merespons setelah beberapa jam.</p>
+                                    </div>
+                                </div>
+
+                                {/* Typing Indicator */}
+                                <div className="flex justify-start">
+                                    <div className="bg-stone-100 dark:bg-stone-700 px-4 py-3 rounded-2xl rounded-tl-sm">
+                                        <div className="flex gap-1">
+                                            <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.2, delay: 0 }} className="w-2 h-2 rounded-full bg-stone-400"></motion.div>
+                                            <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.2, delay: 0.2 }} className="w-2 h-2 rounded-full bg-stone-400"></motion.div>
+                                            <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.2, delay: 0.4 }} className="w-2 h-2 rounded-full bg-stone-400"></motion.div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
                 </div>
             </section>
 
-            {/* Closing CTA */}
-            <section className="py-20 px-4 text-center">
+            {/* Section 6: Preview Hasil Rekap (Demo) */}
+            <section className="py-20 px-4">
+                <div className="max-w-6xl mx-auto">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl md:text-4xl font-bold text-stone-800 dark:text-stone-100 font-heading mb-4">Contoh hasil recap yang akan kamu dapat.</h2>
+                        <p className="text-lg text-stone-600 dark:text-stone-400">Semua ditampilkan rapi dalam bentuk dashboard yang nyaman dibaca.</p>
+                    </div>
+                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {[
+                            { title: "Highlight Penting", emoji: "✨", desc: "Momen-momen kunci dalam percakapan", color: "from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20" },
+                            { title: "Topik Dominan", emoji: "💬", desc: "Apa yang paling sering dibahas", color: "from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20" },
+                            { title: "Mood Percakapan", emoji: "😊", desc: "Vibe chat: hangat, dingin, atau netral", color: "from-pink-50 to-rose-50 dark:from-pink-900/20 dark:to-rose-900/20" },
+                            { title: "Kesimpulan Singkat", emoji: "📝", desc: "Rangkuman keseluruhan chat", color: "from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20" }
+                        ].map((item, i) => (
+                            <motion.div
+                                key={i}
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                whileInView={{ opacity: 1, scale: 1 }}
+                                viewport={{ once: true }}
+                                transition={{ delay: i * 0.1 }}
+                                className={`bg-gradient-to-br ${item.color} p-8 rounded-3xl border border-stone-100 dark:border-stone-700 text-center hover:scale-105 transition-transform`}
+                            >
+                                <div className="text-5xl mb-4">{item.emoji}</div>
+                                <h3 className="text-lg font-bold text-stone-800 dark:text-stone-100 mb-2">{item.title}</h3>
+                                <p className="text-sm text-stone-600 dark:text-stone-400">{item.desc}</p>
+                            </motion.div>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* Section 7: Privacy & Safety Guarantee (Paling Penting) */}
+            <section className="py-20 px-4 bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 dark:from-emerald-950/20 dark:via-teal-950/20 dark:to-cyan-950/20">
+                <div className="max-w-5xl mx-auto">
+                    <div className="text-center mb-12">
+                        <ShieldCheck size={64} className="text-emerald-500 mx-auto mb-6" />
+                        <h2 className="text-3xl md:text-5xl font-bold text-stone-800 dark:text-stone-100 mb-6 font-heading">Privasi kamu bukan fitur. Itu prinsip.</h2>
+                        <p className="text-lg text-stone-600 dark:text-stone-300 mb-8 leading-relaxed max-w-3xl mx-auto">
+                            Recap Chat tidak menyimpan chat kamu ke database. Tidak ada yang dibaca manusia. Tidak ada yang dipublikasikan. Semua hanya diproses untuk analisis — lalu selesai.
+                        </p>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+                        {[
+                            { icon: Lock, title: "Tidak menyimpan chat ke database", desc: "Chat kamu hanya ada di memori sementara selama proses analisis." },
+                            { icon: Eye, title: "Tidak mempublikasikan chat user", desc: "Tidak ada satu pun chat yang bisa dilihat orang lain atau developer." },
+                            { icon: Users, title: "Tidak mengumpulkan identitas pribadi", desc: "Kami tidak tahu siapa kamu. Tidak ada login, tidak ada tracking." },
+                            { icon: FileText, title: "File hanya dipakai untuk proses analisis", desc: "Setelah analisis selesai, file tidak disimpan permanen." },
+                            { icon: CheckCircle, title: "Transparan dan bisa dipercaya", desc: "Semua proses dilakukan di sisi client dengan API yang aman." }
+                        ].map((item, i) => (
+                            <motion.div
+                                key={i}
+                                initial={{ opacity: 0, y: 20 }}
+                                whileInView={{ opacity: 1, y: 0 }}
+                                viewport={{ once: true }}
+                                transition={{ delay: i * 0.08 }}
+                                className="bg-white/90 dark:bg-stone-800/90 backdrop-blur-sm p-6 rounded-2xl border border-emerald-200 dark:border-emerald-900/30 shadow-sm hover:shadow-lg transition-all"
+                            >
+                                <div className="flex items-start gap-4">
+                                    <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
+                                        <item.icon className="text-emerald-600 dark:text-emerald-400" size={20} />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-stone-800 dark:text-stone-100 mb-2 text-sm">{item.title}</h3>
+                                        <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed">{item.desc}</p>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        ))}
+                    </div>
+
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        whileInView={{ opacity: 1 }}
+                        viewport={{ once: true }}
+                        className="bg-white/60 dark:bg-stone-800/60 backdrop-blur-sm p-6 rounded-2xl border border-emerald-200 dark:border-emerald-800/30 text-center"
+                    >
+                        <p className="text-sm text-stone-600 dark:text-stone-400 italic">
+                            <strong className="text-stone-800 dark:text-stone-200">Catatan:</strong> Kamu tetap punya kontrol penuh atas file kamu sendiri. Recap Chat hanya alat bantu, bukan penyimpan data.
+                        </p>
+                    </motion.div>
+                </div>
+            </section>
+
+            {/* Testimoni */}
+            <section className="py-20 px-4">
+                <div className="max-w-6xl mx-auto">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl font-bold text-stone-800 dark:text-stone-100 font-heading mb-4">Kata Mereka</h2>
+                        <p className="text-stone-600 dark:text-stone-400">User yang sudah coba Recap Chat</p>
+                    </div>
+                    <div className="grid md:grid-cols-3 gap-6">
+                        {[
+                            { quote: "Gila sih, chat 2 bulan bisa jadi ringkasan 1 halaman. Akhirnya ngerti kenapa hubungan gue berubah.", name: "Rina, 21" },
+                            { quote: "Akhirnya nemu inti masalah dari chat yang bikin pusing. AI-nya jujur banget, gak lebay.", name: "Budi, 24" },
+                            { quote: "Kayak punya asisten yang ngerangkum drama hidup gue. Serius berguna banget!", name: "Sari, 19" }
+                        ].map((item, i) => (
+                            <motion.div
+                                key={i}
+                                initial={{ opacity: 0, y: 20 }}
+                                whileInView={{ opacity: 1, y: 0 }}
+                                viewport={{ once: true }}
+                                transition={{ delay: i * 0.1 }}
+                                className="bg-white dark:bg-stone-800 p-8 rounded-3xl shadow-sm border border-stone-100 dark:border-stone-700"
+                            >
+                                <Quote className="text-pastel-primary mb-4" size={32} />
+                                <p className="text-stone-600 dark:text-stone-400 mb-6 leading-relaxed italic">"{item.quote}"</p>
+                                <p className="text-sm font-bold text-stone-800 dark:text-stone-100">— {item.name}</p>
+                            </motion.div>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* FAQ */}
+            <section className="py-20 px-4 bg-white/50 dark:bg-stone-900/50 backdrop-blur-sm">
                 <div className="max-w-3xl mx-auto">
-                    <h2 className="text-3xl font-bold text-stone-800 dark:text-stone-100 mb-6 font-heading">Siap lihat isi chat kamu dari sudut pandang yang lebih jelas?</h2>
-                    <p className="text-xl text-stone-600 dark:text-stone-400 mb-10 leading-relaxed">
-                        Lihat rangkuman topik, timeline, emosi, dan pola komunikasi — lalu tanya AI apa pun tentang isi percakapannya.
-                    </p>
-                    <Button onClick={() => setAppState(AppState.UPLOAD)} className="px-10 py-4 text-lg shadow-xl">
-                        ✨ Mulai Recap Sekarang
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl font-bold text-stone-800 dark:text-stone-100 font-heading mb-4">FAQ</h2>
+                        <p className="text-stone-600 dark:text-stone-400">Pertanyaan yang sering ditanyakan</p>
+                    </div>
+                    <div className="space-y-4">
+                        {[
+                            { q: "Apakah chat saya disimpan?", a: "Tidak. Chat kamu hanya diproses sementara dan otomatis hilang setelah sesi selesai." },
+                            { q: "Apakah AI bisa ngarang?", a: "Tidak. AI hanya menganalisis berdasarkan isi chat yang kamu upload. Tidak ada data yang dibuat-buat." },
+                            { q: "Format file apa yang didukung?", a: "Saat ini hanya mendukung file export WhatsApp dalam format .txt" },
+                            { q: "Kenapa hasil rangkuman kadang beda?", a: "AI menganalisis berdasarkan konteks dan pola. Hasil bisa sedikit berbeda tergantung interpretasi." },
+                            { q: "Apakah bisa dipakai untuk chat grup?", a: "Ya, bisa. Tapi hasil terbaik untuk chat personal (1 on 1)." },
+                            { q: "Apakah bisa download hasil rekap?", a: "Ya! Kamu bisa download hasil rekap dalam format PDF atau share ke story." }
+                        ].map((item, i) => (
+                            <motion.details
+                                key={i}
+                                initial={{ opacity: 0 }}
+                                whileInView={{ opacity: 1 }}
+                                viewport={{ once: true }}
+                                className="bg-white dark:bg-stone-800 p-6 rounded-2xl border border-stone-100 dark:border-stone-700 group"
+                            >
+                                <summary className="font-bold text-stone-800 dark:text-stone-100 cursor-pointer flex items-center justify-between">
+                                    {item.q}
+                                    <ChevronRight className="group-open:rotate-90 transition-transform" size={20} />
+                                </summary>
+                                <p className="text-sm text-stone-600 dark:text-stone-400 mt-4 leading-relaxed">{item.a}</p>
+                            </motion.details>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* CTA Section (Ajakan Terakhir) */}
+            <section className="py-20 px-4">
+                <div className="max-w-4xl mx-auto bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/20 dark:to-pink-900/20 p-12 md:p-16 rounded-[3rem] shadow-xl border border-purple-200 dark:border-purple-800/30 text-center relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-pastel-primary/20 rounded-full blur-3xl"></div>
+                    <Sparkles className="text-pastel-primary mx-auto mb-6" size={64} />
+                    <h2 className="text-3xl md:text-4xl font-bold text-stone-800 dark:text-stone-100 mb-6 font-heading">Kalau chat kamu panjang… jangan kamu yang capek.</h2>
+                    <p className="text-lg text-stone-600 dark:text-stone-300 mb-8 max-w-2xl mx-auto">Upload sekarang, biar Recap Chat yang bantu rangkum, baca, dan jelasin semuanya.</p>
+                    <Button onClick={() => setAppState(AppState.UPLOAD)} className="px-12 py-5 text-xl shadow-2xl">
+                        Mulai Recap Sekarang 🚀
                     </Button>
                 </div>
             </section>
@@ -1117,14 +1440,88 @@ const App: React.FC = () => {
                     Mulai Recap Sekarang
                 </Button>
             </motion.div>
+
+            {/* Donation Popup */}
+            <AnimatePresence>
+                {showDonationPopup && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                        onClick={() => closeDonationPopup(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            exit={{ scale: 0.9, y: 20 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="bg-white dark:bg-stone-800 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-stone-200 dark:border-stone-700 relative"
+                        >
+                            <button
+                                onClick={() => closeDonationPopup(false)}
+                                className="absolute top-4 right-4 p-2 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-full transition-colors"
+                            >
+                                <XCircle size={20} className="text-stone-400" />
+                            </button>
+
+                            <div className="text-center mb-6">
+                                <div className="w-16 h-16 bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <Heart className="text-pastel-primary" size={32} />
+                                </div>
+                                <h3 className="text-2xl font-bold text-stone-800 dark:text-stone-100 mb-3 font-heading">Boleh aku minta dukungan kecil? 💜</h3>
+                                <p className="text-stone-600 dark:text-stone-400 leading-relaxed text-sm">
+                                    Recap Chat dibuat dengan niat baik supaya orang bisa membaca ulang chat dengan cara yang lebih rapi dan bermakna. Kalau kamu merasa website ini membantu, kamu bisa dukung pengembangnya lewat donasi kecil buat biaya AI dan pengembangan fitur.
+                                </p>
+                            </div>
+
+                            <div className="space-y-3 mb-6">
+                                <Button
+                                    onClick={() => {
+                                        window.open('https://trakteer.id/ackmadelfan', '_blank');
+                                        closeDonationPopup(false);
+                                    }}
+                                    className="w-full py-4 text-base"
+                                >
+                                    ✨ Dukung Developer
+                                </Button>
+                                <button
+                                    onClick={() => closeDonationPopup(false)}
+                                    className="w-full py-3 text-sm text-stone-600 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 transition-colors font-medium"
+                                >
+                                    Nanti dulu
+                                </button>
+                            </div>
+
+                            <button
+                                onClick={() => closeDonationPopup(true)}
+                                className="text-xs text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors mx-auto block"
+                            >
+                                Jangan tampilkan lagi
+                            </button>
+
+                            <p className="text-[10px] text-stone-400 text-center mt-4 italic">
+                                Donasi bukan kewajiban. Website tetap bisa kamu pakai seperti biasa.
+                            </p>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 
     const renderStudio = () => (
         <Layout title="Mulai Analisis Chat Kamu" className="flex flex-col min-h-screen">
-            <div className="absolute top-4 right-4 z-50"><ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} /></div>
+            {/* Fixed Back Button & Theme Toggle */}
+            <div className="fixed top-4 left-4 right-4 z-50 flex items-center justify-between max-w-4xl mx-auto">
+                <Button variant="ghost" onClick={() => setAppState(AppState.LANDING)} className="!px-4 !py-2 text-sm flex items-center gap-2 bg-white/80 dark:bg-stone-800/80 backdrop-blur-md shadow-sm">
+                    <ArrowLeft size={16} />
+                    Kembali
+                </Button>
+                <ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
+            </div>
 
-            <div className="flex-1 w-full max-w-4xl mx-auto flex flex-col items-center">
+            <div className="flex-1 w-full max-w-4xl mx-auto flex flex-col items-center mt-16">
                 <div className="text-center mb-10">
                     <p className="text-stone-500 dark:text-stone-400">Upload file chat WhatsApp, lalu Recap Chat akan menyusun rangkuman dan insight dari percakapan tersebut.</p>
                 </div>
@@ -1202,7 +1599,13 @@ const App: React.FC = () => {
 
                 {showStory && <StoryViewer analysis={analysis} onClose={() => setShowStory(false)} />}
                 {showPDFGenerator && <PDFGeneratorModal analysis={analysis} chatData={chatData} onClose={() => setShowPDFGenerator(false)} />}
-                {showStoryGenerator && <StoryGeneratorModal analysis={analysis} chatData={chatData} onClose={() => setShowStoryGenerator(false)} />}
+                {showStoryGenerator && (
+                    <AdvancedStoryGenerator
+                        analysisResult={analysis}
+                        onBack={() => setShowStoryGenerator(false)}
+                        isDarkMode={isDarkMode}
+                    />
+                )}
 
                 {/* --- BAGIAN 1: PEMBUKA (Header Emosional & Overview) --- */}
                 <div className="pt-20 pb-12 px-4 relative z-10">
@@ -1591,7 +1994,7 @@ const App: React.FC = () => {
     };
 
     const renderChat = () => (
-        <div className="flex flex-col h-screen bg-pastel-bgEnd dark:bg-stone-950 font-sans transition-colors duration-300">
+        <div className="flex flex-col h-screen bg-gradient-to-br from-pastel-bgEnd to-pastel-lavender dark:from-stone-950 dark:via-stone-900 dark:to-stone-950 font-sans transition-colors duration-300">
             <div className="bg-white/80 dark:bg-stone-900/80 backdrop-blur-md border-b border-stone-100 dark:border-stone-800 p-4 flex justify-between items-center z-20">
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-pastel-card dark:bg-stone-800 rounded-full flex items-center justify-center"><Sparkles size={20} className="text-stone-600 dark:text-stone-300" /></div>
@@ -1624,94 +2027,424 @@ const App: React.FC = () => {
 
     // Helper for About pages
     const renderAboutAboutWebsite = () => (
-        <Layout title="Tentang Recap Chat" className="flex flex-col min-h-screen">
-            <div className="absolute top-4 right-4 z-50"><ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} /></div>
-            <div className="max-w-3xl text-center space-y-8 flex-1 flex flex-col justify-center py-10">
-                <p className="text-xl text-stone-600 dark:text-stone-300 leading-relaxed font-light">Recap Chat adalah website yang membantu kamu merangkum dan memahami percakapan WhatsApp dengan cara yang lebih jelas, rapi, dan mendalam.</p>
-
-                <div className="grid md:grid-cols-2 gap-6 text-left">
-                    <div className="p-6 bg-white/60 dark:bg-stone-800/60 rounded-3xl border border-stone-100 dark:border-stone-700">
-                        <h3 className="font-bold mb-3 text-stone-800 dark:text-stone-200 flex items-center gap-2"><FileText size={18} /> Apa Itu Recap Chat?</h3>
-                        <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
-                            Recap Chat dibuat untuk percakapan yang terlalu panjang untuk dibaca ulang. Website ini membaca isi chat yang kamu upload, lalu menyusunnya menjadi ringkasan yang lebih enak dipahami, mulai dari tema obrolan, perubahan suasana, sampai momen-momen yang paling menonjol.
-                        </p>
-                    </div>
-                    <div className="p-6 bg-white/60 dark:bg-stone-800/60 rounded-3xl border border-stone-100 dark:border-stone-700">
-                        <h3 className="font-bold mb-3 text-stone-800 dark:text-stone-200 flex items-center gap-2"><Eye size={18} /> Apa yang Ditampilkan?</h3>
-                        <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
-                            Setelah upload, kamu akan melihat ringkasan terstruktur: kapan percakapan dimulai, grafik intensitas chat, topik dominan, mood yang muncul, dan momen penting. Semua ditampilkan dengan visual yang lembut dan nyaman.
-                        </p>
-                    </div>
-                    <div className="p-6 bg-white/60 dark:bg-stone-800/60 rounded-3xl border border-stone-100 dark:border-stone-700">
-                        <h3 className="font-bold mb-3 text-stone-800 dark:text-stone-200 flex items-center gap-2"><Brain size={18} /> Fitur Tanya AI</h3>
-                        <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
-                            Kamu bisa bertanya apa saja tentang percakapan tersebut. AI akan menjawab dengan jujur berdasarkan bukti dari chat yang dianalisis, tanpa mengada-ada atau membuat kesimpulan berlebihan.
-                        </p>
-                    </div>
-                    <div className="p-6 bg-white/60 dark:bg-stone-800/60 rounded-3xl border border-stone-100 dark:border-stone-700">
-                        <h3 className="font-bold mb-3 text-stone-800 dark:text-stone-200 flex items-center gap-2"><ShieldCheck size={18} /> Prinsip & Privasi</h3>
-                        <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
-                            <strong>Jujur. Rapi. Tidak menghakimi.</strong><br />
-                            Website ini tidak menyimpan file chat kamu secara permanen. Data hanya aktif selama sesi analisis dan otomatis dihapus setelah selesai.
-                        </p>
-                    </div>
+        <>
+            <Layout title="Tentang Recap Chat" className="flex flex-col min-h-screen bg-gradient-to-br from-white via-purple-50/30 to-pink-50/30 dark:from-stone-950 dark:via-purple-950/10 dark:to-stone-900">
+                {/* Fixed Back Button & Theme Toggle */}
+                <div className="fixed top-4 left-4 right-4 z-50 flex items-center justify-between max-w-5xl mx-auto">
+                    <Button variant="ghost" onClick={() => setAppState(AppState.LANDING)} className="!px-4 !py-2 text-sm flex items-center gap-2 bg-white/80 dark:bg-stone-800/80 backdrop-blur-md shadow-sm">
+                        <ArrowLeft size={16} />
+                        Kembali
+                    </Button>
+                    <ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
                 </div>
 
-                <div className="mt-8">
-                    <p className="text-sm font-bold text-stone-500 mb-6">Recap Chat bukan tempat menyimpan chat. Recap Chat adalah tempat memahami chat.</p>
-                    <Button onClick={() => setAppState(AppState.UPLOAD)}>Siap mulai recap chat kamu?</Button>
-                </div>
+                <div className="max-w-5xl mx-auto space-y-20 flex-1 py-20 px-4 mt-16">
+                    {/* Section 1: Hero / Intro */}
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center">
+                        <div className="w-20 h-20 bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                            <Sparkles className="text-pastel-primary" size={48} />
+                        </div>
+                        <h1 className="text-4xl md:text-5xl font-bold text-stone-800 dark:text-stone-100 mb-6 font-heading">Tentang Recap Chat</h1>
+                        <p className="text-xl text-stone-600 dark:text-stone-300 leading-relaxed max-w-3xl mx-auto">
+                            Recap Chat adalah ruang digital untuk membantu kamu <strong className="text-pastel-primary">membaca ulang percakapan WhatsApp</strong> dengan cara yang lebih rapi, jelas, dan bermakna. Bukan sekadar merangkum, tapi memahami.
+                        </p>
+                    </motion.div>
 
-                <Button variant="ghost" onClick={() => setAppState(AppState.LANDING)} className="text-xs">Kembali ke Beranda</Button>
-            </div>
+                    {/* Section 2: Kenapa Website Ini Dibuat? */}
+                    <div>
+                        <h2 className="text-3xl font-bold text-stone-800 dark:text-stone-100 mb-8 text-center font-heading">Kenapa Website Ini Dibuat?</h2>
+                        <div className="bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 p-8 md:p-10 rounded-3xl border border-blue-100 dark:border-blue-900/30">
+                            <p className="text-lg text-stone-700 dark:text-stone-300 leading-relaxed mb-6">
+                                Kadang kita punya chat yang panjang banget. Ratusan, bahkan ribuan pesan. Dan kadang kita butuh <strong>baca ulang</strong> untuk:
+                            </p>
+                            <div className="grid md:grid-cols-2 gap-4">
+                                {[
+                                    "Cari momen penting yang hampir terlupakan",
+                                    "Pahami pola komunikasi dalam hubungan",
+                                    "Refleksi tentang percakapan yang sudah terjadi",
+                                    "Cari tahu topik apa yang paling sering dibahas"
+                                ].map((item, i) => (
+                                    <motion.div key={i} initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }} className="flex items-start gap-3 bg-white/60 dark:bg-stone-800/60 p-4 rounded-2xl">
+                                        <CheckCircle className="text-blue-500 shrink-0 mt-0.5" size={20} />
+                                        <p className="text-sm text-stone-700 dark:text-stone-300">{item}</p>
+                                    </motion.div>
+                                ))}
+                            </div>
+                            <p className="text-stone-600 dark:text-stone-400 mt-6 italic text-sm">
+                                Recap Chat hadir buat bantu kamu melakukan semua itu tanpa harus scroll ribuan chat secara manual.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Section 3: Manfaat Utama */}
+                    <div>
+                        <h2 className="text-3xl font-bold text-stone-800 dark:text-stone-100 mb-8 text-center font-heading">Manfaat Utama untuk Kamu</h2>
+                        <div className="grid md:grid-cols-3 gap-6">
+                            {[
+                                { icon: Clock, title: "Hemat Waktu", desc: "Gak perlu scroll ribuan chat. Langsung lihat ringkasan penting.", color: "from-purple-100 to-purple-50 dark:from-purple-900/20 dark:to-purple-950/10" },
+                                { icon: Eye, title: "Lihat Pola yang Gak Kelihatan", desc: "Pahami dinamika percakapan dari sudut pandang yang lebih jernih.", color: "from-pink-100 to-pink-50 dark:from-pink-900/20 dark:to-pink-950/10" },
+                                { icon: Heart, title: "Refleksi Lebih Dalam", desc: "Baca ulang chat bukan cuma buat nostalgia, tapi juga buat belajar.", color: "from-orange-100 to-orange-50 dark:from-orange-900/20 dark:to-orange-950/10" }
+                            ].map((item, i) => (
+                                <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }} className={`bg-gradient-to-br ${item.color} p-6 rounded-3xl border border-white/40 dark:border-stone-700/40 text-center`}>
+                                    <div className="w-14 h-14 bg-white dark:bg-stone-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                        <item.icon className="text-pastel-primary" size={28} />
+                                    </div>
+                                    <h3 className="text-lg font-bold text-stone-800 dark:text-stone-100 mb-2">{item.title}</h3>
+                                    <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">{item.desc}</p>
+                                </motion.div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Section 4: Fitur Utama (8 Fitur) */}
+                    <div>
+                        <h2 className="text-3xl font-bold text-stone-800 dark:text-stone-100 mb-8 text-center font-heading">Fitur Utama yang Bisa Kamu Pakai</h2>
+                        <div className="grid md:grid-cols-2 gap-6">
+                            {[
+                                { icon: FileText, title: "Chat Summary", desc: "Ringkasan percakapan dari awal sampai akhir dengan gaya natural dan mudah dipahami." },
+                                { icon: Calendar, title: "Timeline Percakapan", desc: "Lihat fase hubungan dari waktu ke waktu. Kapan mulai hangat, kapan mulai dingin." },
+                                { icon: Heart, title: "Analisis Emosi", desc: "Deteksi mood dominan dan perubahan suasana sepanjang percakapan." },
+                                { icon: Tag, title: "Topik Dominan", desc: "Ketahui hal-hal yang paling sering dibahas dalam chat kamu." },
+                                { icon: Sparkles, title: "Key Moments", desc: "Tandai momen penting yang terasa berkesan atau berubah drastis." },
+                                { icon: BarChart2, title: "Communication Style", desc: "Analisis siapa yang lebih aktif, lebih ekspresif, atau lebih sering memulai chat." },
+                                { icon: Quote, title: "Memorable Lines", desc: "Kalimat-kalimat unik yang bikin ketawa, bikin sedih, atau bikin inget." },
+                                { icon: Brain, title: "Ask AI Mode", desc: "Tanya AI tentang chat kamu secara bebas dan lebih personal." }
+                            ].map((item, i) => (
+                                <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.08 }} className="bg-white/60 dark:bg-stone-800/60 p-6 rounded-2xl border border-stone-100 dark:border-stone-700 flex gap-4 hover:shadow-lg transition-shadow">
+                                    <div className="w-12 h-12 bg-pastel-secondary dark:bg-stone-700 rounded-xl flex items-center justify-center shrink-0">
+                                        <item.icon className="text-pastel-primary" size={24} />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-stone-800 dark:text-stone-200 mb-1">{item.title}</h3>
+                                        <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">{item.desc}</p>
+                                    </div>
+                                </motion.div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Section 5: Cara Kerja (Step by Step Flow) */}
+                    <div>
+                        <h2 className="text-3xl font-bold text-stone-800 dark:text-stone-100 mb-8 text-center font-heading">Cara Kerja Recap Chat</h2>
+                        <p className="text-center text-stone-600 dark:text-stone-400 mb-10 max-w-2xl mx-auto">Prosesnya simpel dan cepat. Kamu gak perlu login, gak perlu install aplikasi. Langsung pakai.</p>
+
+                        <div className="relative">
+                            {/* Progress Line */}
+                            <div className="hidden md:block absolute top-12 left-0 right-0 h-1 bg-gradient-to-r from-pastel-primary/20 via-pastel-primary to-pastel-primary/20"></div>
+
+                            <div className="grid md:grid-cols-4 gap-6 relative z-10">
+                                {[
+                                    { num: "01", icon: Smartphone, title: "Export Chat WhatsApp", desc: "Ambil file chat dari WhatsApp (tanpa media lebih cepat)" },
+                                    { num: "02", icon: Upload, title: "Upload File ke Website", desc: "Masukkan file .txt chat ke sistem Recap Chat" },
+                                    { num: "03", icon: Cpu, title: "AI Menganalisis", desc: "AI membaca pola, emosi, timeline, dan topik secara otomatis" },
+                                    { num: "04", icon: Eye, title: "Lihat Hasil + Tanya AI", desc: "Baca recap lengkap dan tanya AI lebih dalam" }
+                                ].map((step, i) => (
+                                    <motion.div key={i} initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.15 }} className="bg-white dark:bg-stone-800 p-6 rounded-3xl border border-stone-100 dark:border-stone-700 text-center relative">
+                                        <div className="w-12 h-12 bg-pastel-primary text-white rounded-full flex items-center justify-center mx-auto mb-4 font-bold text-lg">{step.num}</div>
+                                        <div className="w-14 h-14 bg-pastel-secondary dark:bg-stone-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                            <step.icon className="text-pastel-primary" size={28} />
+                                        </div>
+                                        <h3 className="font-bold text-stone-800 dark:text-stone-100 mb-2 text-sm">{step.title}</h3>
+                                        <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed">{step.desc}</p>
+                                    </motion.div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="mt-8 bg-white/60 dark:bg-stone-800/60 p-6 rounded-2xl border border-stone-100 dark:border-stone-700">
+                            <p className="text-sm text-stone-600 dark:text-stone-400 italic text-center">
+                                <strong className="text-stone-800 dark:text-stone-200">Catatan:</strong> Semua proses dilakukan secara otomatis menggunakan AI. Tidak ada manusia yang membaca chat kamu.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Section 6: Privasi & Keamanan (PALING PENTING) */}
+                    <div className="bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 dark:from-emerald-950/20 dark:via-teal-950/20 dark:to-cyan-950/20 p-10 md:p-12 rounded-3xl border-2 border-emerald-200 dark:border-emerald-800/30">
+                        <div className="text-center mb-10">
+                            <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+                                <ShieldCheck className="text-emerald-600 dark:text-emerald-400" size={48} />
+                            </div>
+                            <h2 className="text-3xl md:text-4xl font-bold text-stone-800 dark:text-stone-100 mb-4 font-heading">Privasi & Keamanan Data Kamu</h2>
+                            <p className="text-lg text-stone-600 dark:text-stone-300 max-w-2xl mx-auto leading-relaxed">
+                                Ini bagian paling penting. <strong className="text-emerald-600 dark:text-emerald-400">Chat kamu adalah urusan kamu.</strong> Website ini cuma alat bantu, bukan penyimpan data.
+                            </p>
+                        </div>
+
+                        <div className="grid md:grid-cols-2 gap-6 mb-8">
+                            {[
+                                { icon: Lock, title: "Tidak Menyimpan ke Database", desc: "File chat kamu TIDAK disimpan di server atau database manapun. Setelah proses selesai, data hilang." },
+                                { icon: Users, title: "Tidak Ada yang Baca Chat Kamu", desc: "Tidak ada manusia (termasuk developer) yang bisa atau akan membaca isi chat kamu. Semua proses otomatis oleh AI." },
+                                { icon: Eye, title: "Tidak Mempublikasikan Data", desc: "Chat kamu tidak akan pernah dipublikasikan, dibagikan, atau dijadikan contoh untuk orang lain." },
+                                { icon: RefreshCw, title: "Refresh = Hilang Total", desc: "Kalau kamu refresh halaman, semua data chat langsung hilang dari memori. Tidak ada jejak." },
+                                { icon: FileText, title: "Hanya untuk Proses Analisis", desc: "File kamu hanya dipakai untuk proses analisis sementara. Tidak ada penyimpanan permanen." },
+                                { icon: CheckCircle, title: "Tidak Jadi Dataset AI", desc: "Chat kamu tidak akan dipakai untuk melatih AI atau dijadikan dataset untuk keperluan lain." }
+                            ].map((item, i) => (
+                                <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.08 }} className="bg-white/90 dark:bg-stone-800/90 backdrop-blur-sm p-5 rounded-2xl border border-emerald-200 dark:border-emerald-900/30 flex gap-4">
+                                    <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center shrink-0">
+                                        <item.icon className="text-emerald-600 dark:text-emerald-400" size={20} />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-stone-800 dark:text-stone-100 mb-1 text-sm">{item.title}</h3>
+                                        <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed">{item.desc}</p>
+                                    </div>
+                                </motion.div>
+                            ))}
+                        </div>
+
+                        <div className="bg-white/70 dark:bg-stone-800/70 backdrop-blur-sm p-6 rounded-2xl border border-emerald-200 dark:border-emerald-800/30">
+                            <p className="text-sm text-stone-700 dark:text-stone-300 leading-relaxed text-center">
+                                <strong className="text-emerald-600 dark:text-emerald-400">Jaminan:</strong> Kamu tetap punya kontrol penuh atas file kamu sendiri. Recap Chat hanya alat bantu untuk membaca, bukan untuk menyimpan atau menyebarkan.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Section 7: Komitmen Developer */}
+                    <div className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 p-8 md:p-10 rounded-3xl border border-purple-100 dark:border-purple-900/30">
+                        <div className="flex items-start gap-4 mb-6">
+                            <div className="w-14 h-14 bg-purple-100 dark:bg-purple-900/30 rounded-2xl flex items-center justify-center shrink-0">
+                                <Heart className="text-purple-600 dark:text-purple-400" size={28} />
+                            </div>
+                            <div>
+                                <h2 className="text-2xl font-bold text-stone-800 dark:text-stone-100 mb-2 font-heading">Komitmen Developer</h2>
+                                <p className="text-stone-600 dark:text-stone-400 text-sm">Prinsip yang dipegang dalam membuat website ini</p>
+                            </div>
+                        </div>
+                        <div className="space-y-3 text-sm text-stone-700 dark:text-stone-300 leading-relaxed">
+                            <p className="flex items-start gap-2">
+                                <CheckCircle className="text-purple-500 shrink-0 mt-0.5" size={16} />
+                                Website ini dibuat dengan <strong>niat baik</strong> untuk membantu orang memahami percakapan mereka dengan lebih baik.
+                            </p>
+                            <p className="flex items-start gap-2">
+                                <CheckCircle className="text-purple-500 shrink-0 mt-0.5" size={16} />
+                                Developer <strong>tidak akan pernah</strong> mengakses, membaca, atau menyimpan chat user untuk kepentingan apapun.
+                            </p>
+                            <p className="flex items-start gap-2">
+                                <CheckCircle className="text-purple-500 shrink-0 mt-0.5" size={16} />
+                                Privasi user adalah <strong>prioritas utama</strong>, bukan fitur tambahan.
+                            </p>
+                            <p className="flex items-start gap-2">
+                                <CheckCircle className="text-purple-500 shrink-0 mt-0.5" size={16} />
+                                Website ini akan terus dikembangkan dengan <strong>transparansi</strong> dan <strong>kejujuran</strong>.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Section 8: FAQ */}
+                    <div>
+                        <h2 className="text-3xl font-bold text-stone-800 dark:text-stone-100 mb-8 text-center font-heading">Pertanyaan yang Sering Ditanyakan</h2>
+                        <div className="space-y-4">
+                            {[
+                                { q: "Apakah chat saya benar-benar aman?", a: "Ya. Chat kamu tidak disimpan di database, tidak dibaca manusia, dan tidak dipublikasikan. Setelah proses selesai, data hilang dari memori." },
+                                { q: "Apakah saya perlu login atau daftar akun?", a: "Tidak perlu. Website ini bisa langsung dipakai tanpa login, tanpa daftar, tanpa install aplikasi." },
+                                { q: "Apakah AI bisa salah dalam menganalisis?", a: "Bisa. AI menganalisis berdasarkan pola dan konteks yang ada. Hasil analisis bukan kebenaran mutlak, tapi perspektif tambahan untuk membantu kamu memahami chat." },
+                                { q: "Apakah bisa untuk chat grup?", a: "Bisa, tapi hasil terbaik untuk chat personal (1 on 1). Chat grup dengan banyak orang bisa lebih kompleks dan hasilnya mungkin kurang detail." },
+                                { q: "Berapa lama proses analisis?", a: "Tergantung panjang chat. Biasanya 30 detik - 2 menit. Semakin panjang chat, semakin lama prosesnya." },
+                                { q: "Apakah website ini gratis?", a: "Untuk sekarang bisa digunakan gratis. Tapi mungkin ke depan akan ada batas penggunaan untuk menjaga biaya AI." },
+                                { q: "Bagaimana cara export chat WhatsApp?", a: "Buka chat → Klik titik tiga di pojok kanan atas → Pilih 'Ekspor chat' → Pilih 'Tanpa Media' → Simpan file .txt → Upload ke Recap Chat." }
+                            ].map((item, i) => (
+                                <motion.details key={i} initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="bg-white dark:bg-stone-800 p-6 rounded-2xl border border-stone-100 dark:border-stone-700 group cursor-pointer">
+                                    <summary className="font-bold text-stone-800 dark:text-stone-100 flex items-center justify-between">
+                                        <span className="text-sm md:text-base">{item.q}</span>
+                                        <ChevronRight className="group-open:rotate-90 transition-transform shrink-0 ml-2" size={20} />
+                                    </summary>
+                                    <p className="text-sm text-stone-600 dark:text-stone-400 mt-4 leading-relaxed">{item.a}</p>
+                                </motion.details>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Section 9: Apa yang TIDAK Dilakukan */}
+                    <div className="bg-amber-50/50 dark:bg-amber-900/10 p-8 rounded-3xl border border-amber-100 dark:border-amber-900/30">
+                        <div className="flex items-center gap-3 mb-6">
+                            <AlertCircle className="text-amber-500" size={32} />
+                            <h2 className="text-2xl font-bold text-stone-800 dark:text-stone-100 font-heading">Apa yang TIDAK Dilakukan Website Ini?</h2>
+                        </div>
+                        <div className="space-y-3 text-sm text-stone-700 dark:text-stone-300">
+                            <p className="flex items-start gap-2"><XCircle size={16} className="text-amber-500 shrink-0 mt-0.5" /> AI tidak membaca chat secara "mistis" atau supernatural</p>
+                            <p className="flex items-start gap-2"><XCircle size={16} className="text-amber-500 shrink-0 mt-0.5" /> AI tidak menebak isi chat yang hilang atau tidak ada</p>
+                            <p className="flex items-start gap-2"><XCircle size={16} className="text-amber-500 shrink-0 mt-0.5" /> AI tidak membuat fakta baru atau mengarang cerita</p>
+                            <p className="flex items-start gap-2"><XCircle size={16} className="text-amber-500 shrink-0 mt-0.5" /> Hasil analisis bergantung sepenuhnya pada isi chat yang diberikan</p>
+                            <p className="flex items-start gap-2"><XCircle size={16} className="text-amber-500 shrink-0 mt-0.5" /> Website ini bukan alat untuk "stalking" atau mengawasi orang lain</p>
+                        </div>
+                    </div>
+
+                    {/* Section 10: CTA Penutup */}
+                    <div className="text-center bg-gradient-to-r from-purple-100 via-pink-100 to-orange-100 dark:from-purple-900/20 dark:via-pink-900/20 dark:to-orange-900/20 p-10 md:p-12 rounded-3xl border border-purple-200 dark:border-purple-800/30 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-pastel-primary/10 rounded-full blur-3xl"></div>
+                        <div className="absolute bottom-0 left-0 w-64 h-64 bg-pink-300/10 rounded-full blur-3xl"></div>
+                        <div className="relative z-10">
+                            <Sparkles className="text-pastel-primary mx-auto mb-6" size={56} />
+                            <h2 className="text-2xl md:text-3xl font-bold text-stone-800 dark:text-stone-100 mb-4 font-heading">Siap Coba Recap Chat?</h2>
+                            <p className="text-lg text-stone-600 dark:text-stone-300 mb-8 max-w-2xl mx-auto leading-relaxed">
+                                Kalau kamu udah paham cara kerjanya dan yakin chat kamu aman, sekarang saatnya coba langsung. Upload chat kamu dan lihat hasilnya.
+                            </p>
+                            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                                <Button onClick={() => setAppState(AppState.UPLOAD)} className="px-10 py-4 text-lg">
+                                    Mulai Recap Sekarang 🚀
+                                </Button>
+                                <Button variant="ghost" onClick={() => setAppState(AppState.LANDING)} className="text-sm">
+                                    Baca Cara Kerja di Landing Page
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="text-center">
+                        <Button variant="ghost" onClick={() => setAppState(AppState.LANDING)} className="text-sm">
+                            ← Kembali ke Beranda
+                        </Button>
+                    </div>
+                </div>
+            </Layout>
             <Footer setAppState={setAppState} />
-        </Layout>
+        </>
     );
 
     const renderAboutCreator = () => (
-        <Layout title="Tentang Pembuat" className="flex flex-col min-h-screen">
-            <div className="absolute top-4 right-4 z-50"><ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} /></div>
-            <div className="max-w-2xl text-center flex-1 flex flex-col justify-center py-10 space-y-8">
-                <div className="flex flex-col items-center">
-                    <div className="w-24 h-24 bg-stone-200 dark:bg-stone-700 rounded-full mb-4 flex items-center justify-center overflow-hidden border-4 border-white dark:border-stone-600 shadow-md">
-                        <User size={40} className="text-stone-400" />
-                    </div>
-                    <h2 className="text-2xl font-bold mb-1 text-stone-800 dark:text-stone-200">Ackmad Elfan Purnama</h2>
-                    <p className="text-stone-500 text-sm">Siswa SMK jurusan Rekayasa Perangkat Lunak (RPL)</p>
+        <>
+            <Layout title="Tentang Pembuat" className="flex flex-col min-h-screen bg-gradient-to-br from-white via-pink-50/30 to-purple-50/30 dark:from-stone-950 dark:via-pink-950/10 dark:to-stone-900">
+                {/* Fixed Back Button & Theme Toggle */}
+                <div className="fixed top-4 left-4 right-4 z-50 flex items-center justify-between max-w-3xl mx-auto">
+                    <Button variant="ghost" onClick={() => setAppState(AppState.LANDING)} className="!px-4 !py-2 text-sm flex items-center gap-2 bg-white/80 dark:bg-stone-800/80 backdrop-blur-md shadow-sm">
+                        <ArrowLeft size={16} />
+                        Kembali
+                    </Button>
+                    <ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
                 </div>
+                <div className="max-w-3xl mx-auto flex-1 py-20 px-4 space-y-16 mt-16">
+                    {/* Header Section */}
+                    <div className="text-center">
+                        <div className="w-32 h-32 bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 rounded-full mb-6 flex items-center justify-center overflow-hidden border-4 border-white dark:border-stone-700 shadow-xl mx-auto">
+                            <User size={64} className="text-stone-400 dark:text-stone-500" />
+                        </div>
+                        <h1 className="text-4xl font-bold mb-2 text-stone-800 dark:text-stone-100 font-heading">Ackmad Elfan Purnama</h1>
+                        <p className="text-stone-500 dark:text-stone-400 mb-4">Siswa SMK jurusan Rekayasa Perangkat Lunak (RPL)</p>
+                        <div className="inline-block px-4 py-1.5 rounded-full bg-pastel-secondary dark:bg-stone-800 text-pastel-secondaryText dark:text-stone-300 text-sm font-medium">
+                            ✨ Creator of Recap Chat
+                        </div>
+                    </div>
 
-                <p className="text-lg text-stone-600 dark:text-stone-300 italic font-serif">
-                    "Website ini dibuat oleh seseorang yang percaya bahwa teknologi bisa membantu manusia memahami hal-hal yang sulit dijelaskan lewat kata-kata."
-                </p>
-
-                <div className="space-y-6 text-left bg-white/50 dark:bg-stone-800/50 p-8 rounded-[2rem] border border-stone-100 dark:border-stone-700">
-                    <div>
-                        <h3 className="font-bold text-stone-800 dark:text-stone-200 mb-2">Kenapa saya membuat Recap Chat?</h3>
-                        <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
-                            Masalah ini sering dialami banyak orang: chat terlalu panjang dan sulit dipahami. Banyak orang ingin melihat kembali isi percakapan mereka secara lebih jelas, tapi tidak punya waktu untuk membaca semuanya. Saya membuat Recap Chat untuk merangkum itu semua secara otomatis.
+                    {/* Quote Pembuka */}
+                    <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 p-8 md:p-12 rounded-3xl border border-purple-100 dark:border-purple-800/30 text-center">
+                        <Quote className="text-pastel-primary mx-auto mb-6" size={48} />
+                        <p className="text-xl text-stone-700 dark:text-stone-300 italic font-serif leading-relaxed">
+                            "Website ini dibuat oleh seseorang yang percaya bahwa teknologi bisa membantu manusia memahami hal-hal yang sulit dijelaskan lewat kata-kata."
                         </p>
                     </div>
-                    <div>
-                        <h3 className="font-bold text-stone-800 dark:text-stone-200 mb-2">Saya tipe orang yang suka detail.</h3>
-                        <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
-                            Saya percaya UI/UX yang baik bukan hanya soal tampilan keren, tapi soal kenyamanan. Saya ingin Recap Chat terasa lembut, tenang, dan mudah digunakan, sehingga user tidak merasa terburu-buru.
-                        </p>
-                    </div>
-                    <div>
-                        <h3 className="font-bold text-stone-800 dark:text-stone-200 mb-2">Visi & Gaya</h3>
-                        <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
-                            Saya ingin Recap Chat menjadi website yang benar-benar berguna. UI yang soft, UX yang nyaman, dengan warna pastel lembut dan animasi halus.
-                        </p>
-                    </div>
-                </div>
 
-                <div className="text-center">
-                    <p className="text-sm text-stone-500 mb-6">Terima kasih sudah menggunakan Recap Chat.</p>
-                    <Button variant="ghost" onClick={() => setAppState(AppState.LANDING)}>Kembali ke Beranda</Button>
+                    {/* Cerita Singkat Pembuat */}
+                    <div className="bg-white/60 dark:bg-stone-800/60 p-8 rounded-3xl border border-stone-100 dark:border-stone-700">
+                        <div className="flex items-center gap-3 mb-6">
+                            <BookOpen className="text-pastel-primary" size={28} />
+                            <h2 className="text-2xl font-bold text-stone-800 dark:text-stone-100 font-heading">Cerita Singkat</h2>
+                        </div>
+                        <div className="space-y-4 text-stone-600 dark:text-stone-400 leading-relaxed">
+                            <p>
+                                Halo! Saya Ackmad Elfan Purnama, seorang siswa SMK yang suka bikin project yang bermanfaat. Saya bikin Recap Chat karena saya sadar… <strong>chat WhatsApp itu kadang jadi tempat cerita hidup, tapi kita sering lupa detailnya karena kepanjangan.</strong>
+                            </p>
+                            <p>
+                                Saya suka coding, suka desain UI yang minimalis, dan suka bikin tool yang vibe-nya chill tapi tetap berguna. Recap Chat adalah salah satu project yang saya buat dengan harapan bisa membantu orang-orang memahami percakapan mereka dengan cara yang lebih jelas.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Alasan Membuat Recap Chat */}
+                    <div>
+                        <h2 className="text-2xl font-bold text-stone-800 dark:text-stone-100 mb-6 text-center font-heading">Kenapa Saya Membuat Recap Chat?</h2>
+                        <div className="grid md:grid-cols-3 gap-6">
+                            {[
+                                { emoji: "🤔", title: "Sering lihat orang overthinking", desc: "Banyak orang overthinking karena chat yang panjang dan susah dipahami" },
+                                { emoji: "😓", title: "Chat panjang bikin capek", desc: "Baca ulang chat ribuan pesan itu capek banget, padahal cuma butuh inti-nya" },
+                                { emoji: "💡", title: "Ingin bikin tool berguna", desc: "Saya pengen bikin tool yang simpel tapi beneran berguna untuk kehidupan sehari-hari" }
+                            ].map((item, i) => (
+                                <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }} className="bg-white/60 dark:bg-stone-800/60 p-6 rounded-2xl border border-stone-100 dark:border-stone-700 text-center">
+                                    <div className="text-5xl mb-4">{item.emoji}</div>
+                                    <h3 className="font-bold text-stone-800 dark:text-stone-200 mb-2">{item.title}</h3>
+                                    <p className="text-sm text-stone-600 dark:text-stone-400">{item.desc}</p>
+                                </motion.div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Value yang Saya Pegang */}
+                    <div>
+                        <h2 className="text-2xl font-bold text-stone-800 dark:text-stone-100 mb-6 text-center font-heading">Prinsip yang Saya Pegang</h2>
+                        <div className="grid md:grid-cols-3 gap-6">
+                            {[
+                                { icon: ShieldCheck, title: "Privasi Nomor Satu", desc: "Data user harus dijaga. Tidak boleh disimpan sembarangan.", color: "emerald" },
+                                { icon: CheckCircle, title: "Data Asli, Bukan Ngarang", desc: "AI harus jujur. Tidak boleh membuat-buat fakta atau mengarang cerita.", color: "blue" },
+                                { icon: Eye, title: "Tampilan Harus Nyaman", desc: "UI/UX yang baik bukan cuma keren, tapi nyaman dan mudah digunakan.", color: "purple" }
+                            ].map((item, i) => (
+                                <motion.div key={i} initial={{ opacity: 0, scale: 0.9 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }} className="bg-white/60 dark:bg-stone-800/60 p-6 rounded-2xl border border-stone-100 dark:border-stone-700 text-center hover:shadow-lg transition-shadow">
+                                    <div className={`w-14 h-14 bg-${item.color}-100 dark:bg-${item.color}-900/20 rounded-xl flex items-center justify-center mx-auto mb-4`}>
+                                        <item.icon className={`text-${item.color}-600 dark:text-${item.color}-400`} size={28} />
+                                    </div>
+                                    <h3 className="font-bold text-stone-800 dark:text-stone-200 mb-2">{item.title}</h3>
+                                    <p className="text-sm text-stone-600 dark:text-stone-400">{item.desc}</p>
+                                </motion.div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Fun Facts */}
+                    <div className="bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-900/10 dark:to-orange-900/10 p-8 rounded-3xl border border-yellow-100 dark:border-yellow-900/30">
+                        <div className="flex items-center gap-3 mb-6">
+                            <Sparkles className="text-yellow-500" size={28} />
+                            <h2 className="text-2xl font-bold text-stone-800 dark:text-stone-100 font-heading">Fun Facts About Me</h2>
+                        </div>
+                        <div className="space-y-3 text-stone-700 dark:text-stone-300">
+                            <p className="flex items-start gap-2">✨ Saya suka desain UI minimalis dengan warna pastel</p>
+                            <p className="flex items-start gap-2">✨ Saya suka bikin project yang vibe-nya chill dan nyaman</p>
+                            <p className="flex items-start gap-2">✨ Saya pengen bikin tool yang beneran dipakai orang, bukan cuma project iseng</p>
+                            <p className="flex items-start gap-2">✨ Saya percaya bahwa detail kecil itu penting dalam desain</p>
+                            <p className="flex items-start gap-2">✨ Saya suka belajar hal baru, terutama tentang AI dan web development</p>
+                        </div>
+                    </div>
+
+                    {/* Section Donasi */}
+                    <div className="bg-gradient-to-r from-pink-50 to-purple-50 dark:from-pink-900/20 dark:to-purple-900/20 p-8 md:p-12 rounded-3xl border border-pink-100 dark:border-pink-800/30 text-center">
+                        <Coffee className="text-pastel-primary mx-auto mb-6" size={48} />
+                        <h2 className="text-2xl font-bold text-stone-800 dark:text-stone-100 mb-4 font-heading">Support Pengembangan Recap Chat</h2>
+                        <p className="text-stone-600 dark:text-stone-400 mb-8 leading-relaxed max-w-xl mx-auto">
+                            Kalau kamu merasa Recap Chat berguna, kamu bisa support saya lewat donasi. Ini bakal bantu buat server, maintenance, dan pengembangan fitur baru. Terima kasih banyak! 🙏
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                            <a href="https://saweria.co/ackmadelfan" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-8 py-3 rounded-full font-bold shadow-lg transition-all bg-gradient-to-r from-pink-500 to-purple-500 text-white hover:scale-105 active:scale-95">
+                                <Coffee size={20} /> Support via Saweria
+                            </a>
+                            <button className="inline-flex items-center gap-2 px-8 py-3 rounded-full font-bold shadow-md transition-all bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-200 border border-stone-200 dark:border-stone-700 hover:bg-stone-50 dark:hover:bg-stone-700">
+                                <Share2 size={20} /> Share ke Teman
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Kontak / Sosial Media */}
+                    <div>
+                        <h2 className="text-2xl font-bold text-stone-800 dark:text-stone-100 mb-6 text-center font-heading">Connect With Me</h2>
+                        <div className="grid md:grid-cols-3 gap-4">
+                            {[
+                                { icon: MessageCircle, label: "Instagram", value: "@ackmadelfan", link: "https://instagram.com/ackmadelfan" },
+                                { icon: Terminal, label: "GitHub", value: "ackmad", link: "https://github.com/ackmad" },
+                                { icon: MessageSquare, label: "Email", value: "contact@ackmad.dev", link: "mailto:contact@ackmad.dev" }
+                            ].map((item, i) => (
+                                <a key={i} href={item.link} target="_blank" rel="noopener noreferrer" className="bg-white/60 dark:bg-stone-800/60 p-6 rounded-2xl border border-stone-100 dark:border-stone-700 text-center hover:border-pastel-primary hover:shadow-lg transition-all group">
+                                    <item.icon className="text-pastel-primary mx-auto mb-3 group-hover:scale-110 transition-transform" size={32} />
+                                    <p className="text-xs text-stone-500 dark:text-stone-400 mb-1">{item.label}</p>
+                                    <p className="font-bold text-stone-800 dark:text-stone-200">{item.value}</p>
+                                </a>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Closing */}
+                    <div className="text-center space-y-6">
+                        <p className="text-stone-600 dark:text-stone-400 italic">Terima kasih sudah menggunakan Recap Chat. Semoga bermanfaat! ✨</p>
+                        <Button variant="ghost" onClick={() => setAppState(AppState.LANDING)} className="text-sm">← Kembali ke Beranda</Button>
+                    </div>
                 </div>
-            </div>
+            </Layout>
             <Footer setAppState={setAppState} />
-        </Layout>
+        </>
     );
 
     return (

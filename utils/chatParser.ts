@@ -7,16 +7,16 @@ export const parseWhatsAppChat = (text: string): ChatData => {
 
   // Regex updated to support multiple formats
   const regex = /^\[?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}[, ]+\d{1,2}[:.]\d{2}(?:[:.]\d{2})?(?: ?[AP]M)?)\]?(?: -|:)? (.+?): (.+)/;
-  
+
   // To track media roughly
   let mediaCount = 0;
 
   for (const line of lines) {
-    if (line.includes('Messages and calls are end-to-end encrypted') || 
-        line.includes('created group') ||
-        line.includes('added') ||
-        line.includes('left') ||
-        !line.trim()) {
+    if (line.includes('Messages and calls are end-to-end encrypted') ||
+      line.includes('created group') ||
+      line.includes('added') ||
+      line.includes('left') ||
+      !line.trim()) {
       continue;
     }
 
@@ -58,17 +58,17 @@ export const parseWhatsAppChat = (text: string): ChatData => {
         }
 
         if (!parseSuccess) {
-           const normalizedStr = dateString.replace(/\./g, ':').replace(/,/g, '');
-           const d = new Date(normalizedStr);
-           if (!isNaN(d.getTime())) {
-             validDate = d;
-             parseSuccess = true;
-           }
+          const normalizedStr = dateString.replace(/\./g, ':').replace(/,/g, '');
+          const d = new Date(normalizedStr);
+          if (!isNaN(d.getTime())) {
+            validDate = d;
+            parseSuccess = true;
+          }
         }
       } catch (e) {
         console.warn("Date parse error for line:", line);
       }
-      
+
       participants.add(sender);
       messages.push({ date: validDate, sender: sender, content: content.trim() });
     } else {
@@ -89,6 +89,7 @@ export const parseWhatsAppChat = (text: string): ChatData => {
       name: p,
       messageCount: 0,
       wordCount: 0,
+      averageLength: 0,
       avgReplyTimeMinutes: 0,
       initiationCount: 0
     };
@@ -116,10 +117,10 @@ export const parseWhatsAppChat = (text: string): ChatData => {
     // 3. Daily Distribution
     const dateKey = msg.date.toISOString().split('T')[0];
     dailyCount[dateKey] = (dailyCount[dateKey] || 0) + 1;
-    
+
     // Daily Breakdown Logic
     if (!dailyBreakdown[dateKey]) {
-        dailyBreakdown[dateKey] = {};
+      dailyBreakdown[dateKey] = {};
     }
     dailyBreakdown[dateKey][msg.sender] = (dailyBreakdown[dateKey][msg.sender] || 0) + 1;
 
@@ -132,19 +133,19 @@ export const parseWhatsAppChat = (text: string): ChatData => {
       // Silence Detection
       if (timeDiffDays >= SILENCE_THRESHOLD_DAYS) {
         silencePeriods.push({
-            startDate: lastMessage.date,
-            endDate: msg.date,
-            durationDays: Math.round(timeDiffDays),
-            breaker: msg.sender
+          startDate: lastMessage.date,
+          endDate: msg.date,
+          durationDays: Math.round(timeDiffDays),
+          breaker: msg.sender
         });
       }
 
       // Initiation: If > 6 hours gap, consider it a new conversation start
       if (timeDiffMinutes > 360) { // 6 hours
         if (participantStats[msg.sender]) {
-            participantStats[msg.sender].initiationCount++;
+          participantStats[msg.sender].initiationCount++;
         }
-      } 
+      }
       // Reply Time: If different sender and time < 6 hours
       else if (msg.sender !== lastMessage.sender) {
         if (!replyTimes[msg.sender]) replyTimes[msg.sender] = [];
@@ -170,30 +171,30 @@ export const parseWhatsAppChat = (text: string): ChatData => {
   // Calculate Balance Score (0-100)
   let balanceScore = 50;
   if (participantList.length === 2 && sortedMessages.length > 0) {
-      const p1 = participantList[0];
-      const p2 = participantList[1];
-      const count1 = participantStats[p1]?.messageCount || 0;
-      const count2 = participantStats[p2]?.messageCount || 0;
-      const total = count1 + count2;
-      
-      if (total > 0) {
-          const ratio = Math.min(count1, count2) / Math.max(count1, count2);
-          balanceScore = Math.round(ratio * 100);
-      }
+    const p1 = participantList[0];
+    const p2 = participantList[1];
+    const count1 = participantStats[p1]?.messageCount || 0;
+    const count2 = participantStats[p2]?.messageCount || 0;
+    const total = count1 + count2;
+
+    if (total > 0) {
+      const ratio = Math.min(count1, count2) / Math.max(count1, count2);
+      balanceScore = Math.round(ratio * 100);
+    }
   }
 
   // Find busiest
   const sortedDays = Object.entries(dailyCount).sort((a, b) => b[1] - a[1]);
   const busiestDay = sortedDays.length > 0 ? { date: sortedDays[0][0], count: sortedDays[0][1] } : { date: '', count: 0 };
-  
+
   const busiestHour = hourlyCount.indexOf(Math.max(...hourlyCount));
 
   // Format Data for Charts
   const hourlyDistribution = hourlyCount.map((count, hour) => ({ hour, count }));
   const dailyDistributionArray: DailyStats[] = Object.keys(dailyCount).sort().map(date => ({
-      date,
-      count: dailyCount[date],
-      breakdown: dailyBreakdown[date] || {}
+    date,
+    count: dailyCount[date],
+    breakdown: dailyBreakdown[date] || {}
   }));
 
   // Duration & Averages
@@ -206,24 +207,24 @@ export const parseWhatsAppChat = (text: string): ChatData => {
     const end = sortedMessages[sortedMessages.length - 1].date;
     const diffTime = Math.abs(end.getTime() - start.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
+
     if (diffDays > 0) {
-        avgMessagesPerDay = Math.round(sortedMessages.length / diffDays);
+      avgMessagesPerDay = Math.round(sortedMessages.length / diffDays);
     }
 
     if (diffDays > 365) {
-        const years = Math.floor(diffDays / 365);
-        const remainingDays = diffDays % 365;
-        const months = Math.floor(remainingDays / 30);
-        durationString = `${years} tahun ${months > 0 ? `${months} bulan` : ''}`;
+      const years = Math.floor(diffDays / 365);
+      const remainingDays = diffDays % 365;
+      const months = Math.floor(remainingDays / 30);
+      durationString = `${years} tahun ${months > 0 ? `${months} bulan` : ''}`;
     } else if (diffDays > 30) {
-        const months = Math.floor(diffDays / 30);
-        durationString = `${months} bulan ${diffDays % 30} hari`;
+      const months = Math.floor(diffDays / 30);
+      durationString = `${months} bulan ${diffDays % 30} hari`;
     } else {
-        durationString = `${diffDays} hari`;
+      durationString = `${diffDays} hari`;
     }
   }
-  
+
   return {
     participants: participantList,
     messages: sortedMessages,

@@ -3,7 +3,10 @@ import { LiveStats, UserActivityStatus, AppState } from '../types';
 
 export const useLiveUsers = (currentAppState: AppState) => {
   const [stats, setStats] = useState<LiveStats>({
-    online: 1, 
+    activeUsers: 1,
+    totalAnalyses: 0,
+    averageMessages: 0,
+    online: 1,
     uploading: 0,
     analyzing: 0,
     reading: 0,

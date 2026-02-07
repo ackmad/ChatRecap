@@ -196,7 +196,19 @@ export const createChatSession = (messages: Message[]) => {
 
   const model = genAI.getGenerativeModel({
     model: GEMINI_MODEL_TEXT,
-    systemInstruction: SYSTEM_INSTRUCTION_CHAT
+    systemInstruction: SYSTEM_INSTRUCTION_CHAT,
+    generationConfig: {
+      temperature: 0.7,
+      topK: 40,
+      topP: 0.95,
+      maxOutputTokens: 4096,
+    },
+    safetySettings: [
+      { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+      { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+      { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+      { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH }
+    ]
   });
 
   const chat = model.startChat({
@@ -213,4 +225,93 @@ export const createChatSession = (messages: Message[]) => {
   });
 
   return chat;
+};
+
+// --- FUNGSI SEND MESSAGE DENGAN RETRY (ROTASI KEY) ---
+export const sendChatMessageWithRetry = async (
+  messages: Message[],
+  conversationHistory: { role: string; text: string }[],
+  userMessage: string
+): Promise<string> => {
+  if (API_KEYS.length === 0) {
+    throw new Error("API Key tidak ditemukan.");
+  }
+
+  const chatContext = formatChatForPrompt(messages);
+  let lastError: any = null;
+
+  // Convert conversation history to Gemini format
+  const history = [
+    {
+      role: "user",
+      parts: [{ text: `Ini adalah data chat history kami:\n${chatContext}` }],
+    },
+    {
+      role: "model",
+      parts: [{ text: "Oke, saya siap ngobrol tentang chat ini." }],
+    },
+    // Add previous conversation
+    ...conversationHistory.flatMap(msg => [
+      {
+        role: msg.role === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.text }]
+      }
+    ])
+  ];
+
+  // Try each API key
+  for (let i = 0; i < API_KEYS.length; i++) {
+    const currentKey = API_KEYS[i];
+    const keyIndex = i + 1;
+
+    try {
+      console.log(`🔑 Chat menggunakan API Key #${keyIndex}`);
+
+      const genAI = new GoogleGenerativeAI(currentKey);
+      const model = genAI.getGenerativeModel({
+        model: GEMINI_MODEL_TEXT,
+        systemInstruction: SYSTEM_INSTRUCTION_CHAT,
+        generationConfig: {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 4096,
+        },
+        safetySettings: [
+          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH }
+        ]
+      });
+
+      const chat = model.startChat({ history });
+      const result = await chat.sendMessage(userMessage);
+      const text = result.response.text();
+
+      console.log(`✅ Chat berhasil dengan API Key #${keyIndex}`);
+      return text;
+
+    } catch (error: any) {
+      console.warn(`⚠️ API ${keyIndex} Gagal:`, error.message);
+      lastError = error;
+      const errMsg = error.message || "";
+
+      // Check if we should try next key
+      const isQuotaError = errMsg.includes('429') || errMsg.includes('503') || errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED');
+      const isKeyError = errMsg.includes('403') || errMsg.includes('API key') || errMsg.includes('key not valid') || errMsg.includes('leaked');
+
+      if (isQuotaError || isKeyError) {
+        console.log(`🔄 Mencoba API Key selanjutnya...`);
+        continue; // Try next key
+      } else {
+        // Other errors, throw immediately
+        throw error;
+      }
+    }
+  }
+
+  // All keys failed
+  console.error("Semua API Key gagal untuk chat:", lastError);
+  throw lastError || new Error("Semua API key gagal.");
 };
