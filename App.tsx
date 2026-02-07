@@ -1,5 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Upload, FileText, MessageSquare, ArrowRight, ShieldCheck, RefreshCw, Send, Sparkles, Clock, Calendar, MessageCircle, Heart, User, BookOpen, Feather, Cpu, Layers, ArrowLeft, Coffee, Sun, Moon, Minus, Plus, Hourglass, Tag, Scale, AlertCircle, Quote, ChevronLeft, ChevronRight, Info, BarChart2, TrendingUp, Music, Bot, Lock, CheckCircle, HelpCircle, File, Smartphone, Users, Eye, Brain, Terminal, XCircle, AlertTriangle, Download, Share2, Image as ImageIcon, Grid, Layout as LayoutIcon, Type } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Upload, FileText, MessageSquare, ArrowRight, ShieldCheck, RefreshCw, Send, Sparkles, Clock, Calendar, MessageCircle, Heart, User, BookOpen, Feather, Cpu, Layers, ArrowLeft, Coffee, Sun, Moon, Minus, Plus, Hourglass, Tag, Scale, AlertCircle, Quote, ChevronLeft, ChevronRight, Info, BarChart2, TrendingUp, Music, Bot, Lock, CheckCircle, HelpCircle, File, Smartphone, Users, Eye, Brain, Terminal, XCircle, AlertTriangle, Download, Share2, Image as ImageIcon, Grid, Layout as LayoutIcon, Type, X, Zap, Search, Menu, ChevronDown } from 'lucide-react';
+import { useRoomPresence } from './hooks/useRoomPresence';
+import { RoomPresenceBar } from './components/RoomPresenceBar';
+import { PresenceToast } from './components/PresenceToast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AreaChart, Area, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import ReactMarkdown from 'react-markdown';
@@ -828,6 +831,50 @@ const App: React.FC = () => {
     const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
     const [errorDetails, setErrorDetails] = useState<{ userMsg: string, technicalMsg: string } | null>(null);
     const [showStory, setShowStory] = useState(false);
+
+    // --- REALTIME ANALYTICS SETUP ---
+    // Calculate current page category for Analytics
+    const pageName = useMemo(() => {
+        switch (appState) {
+            case AppState.LANDING:
+            case AppState.ABOUT_WEBSITE:
+            case AppState.ABOUT_CREATOR:
+                return 'landing';
+            case AppState.UPLOAD:
+            case AppState.INSTRUCTIONS:
+            case AppState.PROCESSING:
+                return 'creating';
+            case AppState.INSIGHTS:
+            case AppState.CHAT:
+                return 'reading';
+            default:
+                return 'landing';
+        }
+    }, [appState]);
+
+    // Single Hook Call for Global Analytics
+    const { globalStats, presenceState, isConnected } = useRoomPresence(null, {}, pageName as any);
+
+    // Alias variables for UI compatibility
+    const globalPresence = presenceState; // For landing page badge
+    const updateMyStatus = (_status?: string) => { }; // No-op since server is global-only
+
+
+    // 4. Scroll Detection to update status
+    useEffect(() => {
+        if (appState !== AppState.INSIGHTS) return;
+
+        let scrollTimeout: NodeJS.Timeout;
+        const handleScroll = () => {
+            updateMyStatus('scrolling');
+            clearTimeout(scrollTimeout);
+            scrollTimeout = setTimeout(() => updateMyStatus('reading'), 1000);
+        };
+
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, [appState, updateMyStatus]);
+    const [showStatsPopup, setShowStatsPopup] = useState(false);
     const [showPDFGenerator, setShowPDFGenerator] = useState(false);
     const [showStoryGenerator, setShowStoryGenerator] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(false);
@@ -1001,6 +1048,75 @@ const App: React.FC = () => {
     const renderLanding = () => (
         <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-stone-950 dark:via-purple-950/20 dark:to-stone-900 flex flex-col relative overflow-hidden transition-colors duration-500">
 
+            {/* Fixed Top-Right Theme Toggle */}
+            <div className="fixed top-24 right-8 z-[60]">
+                <ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
+            </div>
+
+            {/* Fixed Top-Left Online Indicator */}
+            <div className="fixed top-24 left-8 z-[60]">
+                <div className="relative group">
+                    <button
+                        onClick={() => setShowStatsPopup(!showStatsPopup)}
+                        onMouseEnter={() => setShowStatsPopup(true)}
+                        onMouseLeave={() => setShowStatsPopup(false)}
+                        className="p-2 rounded-full bg-white/50 dark:bg-stone-800/50 hover:bg-white dark:hover:bg-stone-700 transition-all text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-stone-700 shadow-sm flex items-center justify-center relative backdrop-blur-md"
+                    >
+                        <Users size={18} className={isConnected && globalPresence.onlineCount > 0 ? "text-green-500" : "text-stone-400"} />
+                        {isConnected && globalPresence.onlineCount > 0 && (
+                            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500 text-[8px] text-white justify-center items-center flex">{globalPresence.onlineCount}</span>
+                            </span>
+                        )}
+                    </button>
+
+                    <AnimatePresence>
+                        {showStatsPopup && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                className="absolute top-full left-0 mt-3 w-56 bg-white dark:bg-stone-900 rounded-2xl shadow-xl border border-stone-200 dark:border-stone-800 p-5 z-50 transform origin-top-left"
+                            >
+                                <div className="flex items-center justify-between mb-4 border-b border-stone-100 dark:border-stone-800 pb-3">
+                                    <div className="flex items-center gap-2">
+                                        <div className="relative">
+                                            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                                        </div>
+                                        <span className="text-xs font-bold text-stone-700 dark:text-stone-200 uppercase tracking-wider">Live Users</span>
+                                    </div>
+                                    <span className="text-[10px] font-mono text-stone-400">{isConnected ? 'ONLINE' : 'OFFLINE'}</span>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-xs text-stone-600 dark:text-stone-400 flex items-center gap-2"><Sparkles size={12} className="text-purple-400" /> Landing Page</span>
+                                        <span className="text-xs font-bold font-mono bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded text-stone-600 dark:text-stone-300">{globalStats.landing}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-xs text-stone-600 dark:text-stone-400 flex items-center gap-2"><Zap size={12} className="text-amber-400" /> Creating Recap</span>
+                                        <span className="text-xs font-bold font-mono bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded text-stone-600 dark:text-stone-300">{globalStats.creating}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-xs text-stone-600 dark:text-stone-400 flex items-center gap-2"><BookOpen size={12} className="text-pink-400" /> Reading Result</span>
+                                        <span className="text-xs font-bold font-mono bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded text-stone-600 dark:text-stone-300">{globalStats.result}</span>
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 pt-3 border-t border-stone-100 dark:border-stone-800 flex justify-between items-center">
+                                    <span className="text-[10px] text-stone-400 font-medium">Total Online</span>
+                                    <span className="text-sm font-bold text-green-600 dark:text-green-400 font-mono">{globalStats.total}</span>
+                                </div>
+
+                                {/* Arrow */}
+                                <div className="absolute -top-1.5 left-3 w-3 h-3 bg-white dark:bg-stone-900 border-t border-l border-stone-200 dark:border-stone-800 transform rotate-45"></div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
+            </div>
+
             {/* Navbar Fixed */}
             <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 dark:bg-stone-900/90 backdrop-blur-md border-b border-stone-200 dark:border-stone-800 px-6 py-4 shadow-sm">
                 <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -1008,6 +1124,7 @@ const App: React.FC = () => {
                         <Sparkles className="text-pastel-primary" size={24} />
                         <span className="font-bold text-lg text-stone-800 dark:text-stone-100">Recap Chat</span>
                     </div>
+
                     <div className="hidden md:flex items-center gap-8 text-sm font-medium text-stone-600 dark:text-stone-400">
                         <button onClick={() => setAppState(AppState.LANDING)} className="hover:text-pastel-primary transition-colors">Home</button>
                         <a href="#fitur" className="hover:text-pastel-primary transition-colors">Fitur</a>
@@ -1016,14 +1133,14 @@ const App: React.FC = () => {
                         <button onClick={() => setAppState(AppState.ABOUT_CREATOR)} className="hover:text-pastel-primary transition-colors">Tentang Pembuat</button>
                     </div>
                     <div className="flex items-center gap-3">
-                        <ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
+
                         <Button onClick={() => setAppState(AppState.UPLOAD)} className="!px-6 !py-2 text-sm">Mulai Rekap</Button>
                     </div>
                 </div>
             </nav>
 
             {/* Hero Section - JANGAN DIUBAH TEKSNYA */}
-            <section className="relative pt-32 pb-20 px-4 text-center z-10 max-w-5xl mx-auto">
+            <section className="relative min-h-screen flex flex-col justify-center items-center px-4 text-center z-10 max-w-5xl mx-auto">
                 {/* Floating Elements */}
                 <motion.div animate={{ y: [0, -20, 0] }} transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }} className="absolute top-20 left-10 text-pastel-primary opacity-50 hidden md:block"><MessageCircle size={48} /></motion.div>
                 <motion.div animate={{ y: [0, 20, 0] }} transition={{ repeat: Infinity, duration: 5, ease: "easeInOut" }} className="absolute bottom-20 right-10 text-pastel-card opacity-50 hidden md:block"><Heart size={48} /></motion.div>
@@ -1435,12 +1552,7 @@ const App: React.FC = () => {
 
             <Footer setAppState={setAppState} />
 
-            {/* Sticky CTA */}
-            <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ delay: 2 }} className="fixed bottom-6 right-6 z-40">
-                <Button onClick={() => setAppState(AppState.UPLOAD)} className="shadow-2xl !px-6 !py-3 !rounded-full text-sm">
-                    Mulai Recap Sekarang
-                </Button>
-            </motion.div>
+
 
             {/* Donation Popup */}
             <AnimatePresence>
@@ -1596,15 +1708,82 @@ const App: React.FC = () => {
         return (
             <div className={`min-h-screen bg-gradient-to-b ${theme.gradient} pb-20 font-sans relative transition-colors duration-1000`}>
                 <div className="absolute inset-0 pointer-events-none z-0 bg-noise opacity-30 mix-blend-overlay fixed"></div>
-                <div className="absolute top-4 right-4 z-50"><ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} /></div>
+                <div className="fixed top-4 right-4 z-50"><ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} /></div>
+
+                {/* Fixed Top-Left Online Indicator */}
+                <div className="fixed top-4 left-4 z-50">
+                    <div className="relative group">
+                        <button
+                            onClick={() => setShowStatsPopup(!showStatsPopup)}
+                            onMouseEnter={() => setShowStatsPopup(true)}
+                            onMouseLeave={() => setShowStatsPopup(false)}
+                            className="p-2 rounded-full bg-white/50 dark:bg-stone-800/50 hover:bg-white dark:hover:bg-stone-700 transition-all text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-stone-700 shadow-sm flex items-center justify-center relative backdrop-blur-md"
+                        >
+                            <Users size={18} className={isConnected && globalPresence.onlineCount > 0 ? "text-green-500" : "text-stone-400"} />
+                            {isConnected && globalPresence.onlineCount > 0 && (
+                                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500 text-[8px] text-white justify-center items-center flex">{globalPresence.onlineCount}</span>
+                                </span>
+                            )}
+                        </button>
+
+                        <AnimatePresence>
+                            {showStatsPopup && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                    className="absolute top-full left-0 mt-3 w-56 bg-white dark:bg-stone-900 rounded-2xl shadow-xl border border-stone-200 dark:border-stone-800 p-5 z-50 transform origin-top-left"
+                                >
+                                    <div className="flex items-center justify-between mb-4 border-b border-stone-100 dark:border-stone-800 pb-3">
+                                        <div className="flex items-center gap-2">
+                                            <div className="relative">
+                                                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                                            </div>
+                                            <span className="text-xs font-bold text-stone-700 dark:text-stone-200 uppercase tracking-wider">Live Users</span>
+                                        </div>
+                                        <span className="text-[10px] font-mono text-stone-400">{isConnected ? 'ONLINE' : 'OFFLINE'}</span>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-xs text-stone-600 dark:text-stone-400 flex items-center gap-2"><Sparkles size={12} className="text-purple-400" /> Landing Page</span>
+                                            <span className="text-xs font-bold font-mono bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded text-stone-600 dark:text-stone-300">{globalStats.landing}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-xs text-stone-600 dark:text-stone-400 flex items-center gap-2"><Zap size={12} className="text-amber-400" /> Creating Recap</span>
+                                            <span className="text-xs font-bold font-mono bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded text-stone-600 dark:text-stone-300">{globalStats.creating}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-xs text-stone-600 dark:text-stone-400 flex items-center gap-2"><BookOpen size={12} className="text-pink-400" /> Reading Result</span>
+                                            <span className="text-xs font-bold font-mono bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded text-stone-600 dark:text-stone-300">{globalStats.result}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-4 pt-3 border-t border-stone-100 dark:border-stone-800 flex justify-between items-center">
+                                        <span className="text-[10px] text-stone-400 font-medium">Total Online</span>
+                                        <span className="text-sm font-bold text-green-600 dark:text-green-400 font-mono">{globalStats.total}</span>
+                                    </div>
+
+                                    {/* Arrow */}
+                                    <div className="absolute -top-1.5 left-3 w-3 h-3 bg-white dark:bg-stone-900 border-t border-l border-stone-200 dark:border-stone-800 transform rotate-45"></div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                </div>
+
+                {/* Realtime Toast Notifications for Join/Leave */}
+                <PresenceToast />
 
                 {showStory && <StoryViewer analysis={analysis} onClose={() => setShowStory(false)} />}
-                {showPDFGenerator && <PDFGenerator chatData={chatData} analysis={analysis} onClose={() => setShowPDFGenerator(false)} theme={isDarkMode ? 'dark' : 'pastel'} />}
+                {showPDFGenerator && <PDFGenerator chatData={chatData} analysis={analysis} onClose={() => { setShowPDFGenerator(false); updateMyStatus('reading'); }} theme={isDarkMode ? 'dark' : 'pastel'} />}
                 {showStoryGenerator && (
                     <AdvancedStoryGenerator
                         analysisResult={analysis}
                         chatData={chatData!}
-                        onBack={() => setShowStoryGenerator(false)}
+                        onBack={() => { setShowStoryGenerator(false); updateMyStatus('reading'); }}
                         isDarkMode={isDarkMode}
                     />
                 )}
@@ -1647,7 +1826,7 @@ const App: React.FC = () => {
                         </div>
 
                         <div className="mt-8 flex flex-col md:flex-row items-center justify-center gap-4">
-                            <button onClick={() => setShowPDFGenerator(true)} className="inline-flex items-center gap-3 px-8 py-3 rounded-full font-bold shadow-xl transition-all text-sm bg-stone-900 text-white dark:bg-white dark:text-stone-900 hover:scale-105 active:scale-95 group">
+                            <button onClick={() => { setShowPDFGenerator(true); updateMyStatus('generating'); }} className="inline-flex items-center gap-3 px-8 py-3 rounded-full font-bold shadow-xl transition-all text-sm bg-stone-900 text-white dark:bg-white dark:text-stone-900 hover:scale-105 active:scale-95 group">
                                 <Download size={18} className="group-hover:-translate-y-1 transition-transform" />
                                 <span>Download Recap PDF</span>
                             </button>

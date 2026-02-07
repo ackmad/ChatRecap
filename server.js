@@ -9,10 +9,9 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 
-// Configure CORS for frontend access
 const io = new Server(httpServer, {
   cors: {
-    origin: "*", // Allow all origins for simplicity in this demo
+    origin: "*", // Ganti dengan URL frontend production Anda nanti
     methods: ["GET", "POST"]
   }
 });
@@ -20,76 +19,71 @@ const io = new Server(httpServer, {
 app.use(cors());
 app.use(express.json());
 
-// --- IN-MEMORY DATA STORE (No Database) ---
-// Structure: Map<socketId, { status: string, lastHeartbeat: number }>
+// --- REAL DATA STORE ---
+// Map untuk menyimpan status setiap user: socket.id => "halaman_saat_ini"
+// Contoh data: { 'socket_abc123': 'landing', 'socket_xyz987': 'creating' }
 const activeUsers = new Map();
 
-// Helper to calculate stats
-const calculateStats = () => {
+// Fungsi untuk menghitung dan broadcast data terbaru
+const broadcastRealtimeStats = () => {
+  // 1. Reset hitungan
   const stats = {
-    online: 0,
-    uploading: 0,
-    analyzing: 0,
-    reading: 0,
-    chatting: 0
+    landing: 0,
+    creating: 0,
+    reading: 0, // Halaman result/summary
+    total: 0
   };
 
-  stats.online = activeUsers.size;
-
-  activeUsers.forEach((userData) => {
-    if (userData.status === 'uploading') stats.uploading++;
-    else if (userData.status === 'analyzing') stats.analyzing++;
-    else if (userData.status === 'reading') stats.reading++;
-    else if (userData.status === 'chatting') stats.chatting++;
+  // 2. Loop semua user aktif untuk dikategorikan
+  activeUsers.forEach((page) => {
+    if (stats[page] !== undefined) {
+      stats[page]++;
+    }
   });
 
-  return stats;
-};
+  // 3. Hitung total koneksi aktif (berdasarkan jumlah keys di Map)
+  stats.total = activeUsers.size;
 
-// Broadcast stats to all connected clients
-const broadcastStats = () => {
-  const stats = calculateStats();
-  io.emit('live:update', stats);
+  // 4. Kirim data JUJUR ke semua client yang terhubung
+  console.log('📡 Broadcasting Stats:', stats); // Log untuk Anda memantau di terminal server
+  io.emit('activity_update', stats);
 };
 
 io.on('connection', (socket) => {
-  // 1. Register new user
-  activeUsers.set(socket.id, { status: 'idle', lastHeartbeat: Date.now() });
-  broadcastStats();
+  console.log(`➕ New User Connected: ${socket.id}`);
 
-  // 2. Handle Status Update from Client
-  socket.on('user:status', (status) => {
-    const user = activeUsers.get(socket.id);
-    if (user) {
-      user.status = status;
-      activeUsers.set(socket.id, user);
-      broadcastStats();
-    }
+  // Default: Anggap user di landing page saat baru connect (biar langsung kehitung online)
+  activeUsers.set(socket.id, 'landing');
+  broadcastRealtimeStats();
+
+  // Event 1: User Melapor "Saya sedang di halaman X"
+  socket.on('page_view', (pageName) => {
+    // Validasi nama halaman agar sesuai kategori stats
+    const validPages = ['landing', 'creating', 'reading'];
+    const page = validPages.includes(pageName) ? pageName : 'landing';
+
+    // Simpan/Update status user ini
+    activeUsers.set(socket.id, page);
+
+    // Langsung update semua orang
+    broadcastRealtimeStats();
   });
 
-  // 3. Heartbeat to keep connection alive logic (optional extended logic)
-  socket.on('user:heartbeat', () => {
-    const user = activeUsers.get(socket.id);
-    if (user) {
-      user.lastHeartbeat = Date.now();
-      activeUsers.set(socket.id, user);
-    }
-  });
-
-  // 4. Handle Disconnect
+  // Event 2: User Putus Koneksi (Tutup Tab / Refresh)
   socket.on('disconnect', () => {
+    // Hapus user dari data store
     activeUsers.delete(socket.id);
-    broadcastStats();
+
+    // Update semua orang bahwa user berkurang
+    broadcastRealtimeStats();
   });
 });
 
-// Basic Health Check
 app.get('/', (req, res) => {
-  res.send('Recap Chat Realtime Server is Running');
+  res.send('🟢 Realtime Analytics Server Running (Pure Data Mode)');
 });
 
 const PORT = process.env.PORT || 3001;
-
 httpServer.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`✅ Server siap di port ${PORT}`);
 });
