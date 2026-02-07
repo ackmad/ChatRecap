@@ -5,6 +5,7 @@ import {
     Heart, TrendingUp, MessageCircle, Calendar, User, Zap,
     Eye, EyeOff, Check, Loader2, Info, Sparkles, BarChart3
 } from 'lucide-react';
+import { Dropdown } from './Dropdown';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import html2canvas from 'html2canvas';
@@ -730,83 +731,34 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
                     <div className="flex-1 overflow-y-auto p-6 space-y-6">
                         {/* Template Selection */}
                         <div>
-                            <h3 className="text-sm font-bold text-stone-900 dark:text-white mb-3 flex items-center gap-2">
-                                <span className="text-lg">✨</span>
-                                Pilih Template
-                            </h3>
-                            <div className="grid grid-cols-2 gap-3">
-                                {templates.map((template) => {
-                                    const isActive = selectedTemplate === template.id;
-                                    return (
-                                        <button
-                                            key={template.id}
-                                            onClick={() => {
-                                                setSelectedTemplate(template.id);
-                                                setCurrentSlide(templates.findIndex(t => t.id === template.id));
-                                            }}
-                                            className={`
-                                                relative p-4 rounded-2xl border-2 transition-all text-left
-                                                ${isActive
-                                                    ? 'border-purple-500 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30 shadow-lg shadow-purple-500/20'
-                                                    : 'border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 hover:border-purple-300 dark:hover:border-purple-700 hover:shadow-md'
-                                                }
-                                            `}
-                                        >
-                                            {isActive && (
-                                                <div className="absolute -top-1 -right-1 w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
-                                                    <Check size={14} className="text-white" />
-                                                </div>
-                                            )}
-                                            <div className="text-2xl mb-2">{template.emoji}</div>
-                                            <div className="text-sm font-bold text-stone-900 dark:text-white mb-1">
-                                                {template.name}
-                                            </div>
-                                            <div className="text-xs text-stone-600 dark:text-stone-400 leading-tight">
-                                                {template.desc}
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                            <Dropdown
+                                label="✨ Pilih Template"
+                                options={templates.map(t => ({
+                                    id: t.id,
+                                    label: t.name,
+                                    icon: t.icon,
+                                    description: t.desc
+                                }))}
+                                value={selectedTemplate}
+                                onChange={(val) => {
+                                    setSelectedTemplate(val as TemplateType);
+                                    setCurrentSlide(templates.findIndex(t => t.id === val));
+                                }}
+                            />
                         </div>
 
                         {/* Theme Selection */}
                         <div>
-                            <h3 className="text-sm font-bold text-stone-900 dark:text-white mb-3 flex items-center gap-2">
-                                <span className="text-lg">🎨</span>
-                                Pilih Tema Warna
-                            </h3>
-                            <div className="grid grid-cols-2 gap-3">
-                                {themes.map((theme) => {
-                                    const isActive = selectedTheme === theme.id;
-                                    return (
-                                        <button
-                                            key={theme.id}
-                                            onClick={() => setSelectedTheme(theme.id)}
-                                            className={`
-                                                relative p-3 rounded-xl border-2 transition-all
-                                                ${isActive
-                                                    ? 'border-purple-500 shadow-lg shadow-purple-500/20'
-                                                    : 'border-stone-200 dark:border-stone-700 hover:border-purple-300 dark:hover:border-purple-700'
-                                                }
-                                            `}
-                                        >
-                                            {isActive && (
-                                                <div className="absolute -top-1 -right-1 w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center">
-                                                    <Check size={12} className="text-white" />
-                                                </div>
-                                            )}
-                                            <div
-                                                className="w-full h-12 rounded-lg mb-2"
-                                                style={{ background: theme.gradient }}
-                                            />
-                                            <div className="text-xs font-semibold text-stone-900 dark:text-white text-center">
-                                                {theme.name}
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                            <Dropdown
+                                label="🎨 Pilih Tema Warna"
+                                options={themes.map(t => ({
+                                    id: t.id,
+                                    label: t.name,
+                                    leftContent: <div className="w-5 h-5 rounded-full ring-1 ring-stone-200 dark:ring-stone-600 shadow-sm" style={{ background: t.gradient }} />
+                                }))}
+                                value={selectedTheme}
+                                onChange={(val) => setSelectedTheme(val as ThemeType)}
+                            />
                         </div>
 
                         {/* Privacy & Download Options */}

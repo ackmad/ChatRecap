@@ -1479,7 +1479,7 @@ const App: React.FC = () => {
                             <div className="space-y-3 mb-6">
                                 <Button
                                     onClick={() => {
-                                        window.open('https://trakteer.id/ackmadelfan', '_blank');
+                                        window.open('https://saweria.co/ackmadelfan', '_blank');
                                         closeDonationPopup(false);
                                     }}
                                     className="w-full py-4 text-base"
