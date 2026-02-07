@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Download, X, ChevronLeft, ChevronRight,
     Heart, TrendingUp, MessageCircle, Calendar, User, Zap,
-    Eye, EyeOff, Check, Loader2, Info, Sparkles
+    Eye, EyeOff, Check, Loader2, Info, Sparkles, BarChart3
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
@@ -39,6 +39,31 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
         blurSensitive: false,
         safeQuote: false
     });
+
+    // Mobile scaling logic
+    const [mobileScale, setMobileScale] = useState(0.35);
+
+    useEffect(() => {
+        const handleResize = () => {
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            // Calculate available space for the preview
+            // Horizontal: screen width - 32px (margins)
+            // Vertical: screen height - ~340px (header 56px + controls/footer ~280px)
+            const availableW = vw - 32;
+            const availableH = vh - 340;
+
+            const scaleW = availableW / 1080;
+            const scaleH = availableH / 1920;
+
+            // Use the smaller scale to fit both dimensions
+            setMobileScale(Math.min(scaleW, scaleH));
+        };
+
+        handleResize();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     const templates = [
         {
@@ -152,6 +177,13 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
             icon: Sparkles,
             desc: 'Prediksi hubungan 2026',
             emoji: '🔮'
+        },
+        {
+            id: 'total-recap' as TemplateType,
+            name: 'Total Recap',
+            icon: BarChart3,
+            desc: 'Rekap total perjalanan chat',
+            emoji: '📅'
         }
     ];
 
@@ -338,26 +370,44 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
                 return {
                     ...baseData,
                     relationshipScore: result.relationshipScore || 85,
-                    futurePredict: result.futurePredict || 'Masa depan cerah!',
-                    strengthPoints: result.strengthPoints || ['Komunikasi', 'Trust'],
-                    improvementPoints: result.improvementPoints || ['Sering ketemu'],
-                    prediction2026: result.prediction2026 || 'Tahun 2026 kalian akan tetap akrab!',
-                    aiConfidence: result.aiConfidenceScore || 90
+                    futurePredict: result.futurePredict || 'Langgeng terus!',
+                    strengthPoints: result.strengthPoints || ['Komunikasi lancar', 'Saling support'],
+                    improvementPoints: result.improvementPoints || ['Kurangi drama', 'Jangan ghosting'],
+                    prediction2026: result.prediction2026 || 'Kalian bakal makin lengket di tahun 2026!',
+                    aiConfidence: result.aiConfidenceScore || 92
+                };
+            case 'total-recap':
+                // Calculate Duration
+                const startDate = new Date(chatData.dateRange?.start || Date.now());
+                const endDate = new Date(chatData.dateRange?.end || Date.now());
+                const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                const startStr = startDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+                const endStr = endDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+
+                return {
+                    ...baseData,
+                    totalMessages: chatData.totalMessages || 0,
+                    totalRecapDuration: `${diffDays} Hari`,
+                    totalRecapActiveDays: chatData.activeDays || diffDays, // Use activeDays if available
+                    totalRecapStartDate: startStr,
+                    totalRecapEndDate: endStr,
+                    totalRecapInsight: `Wow! Kalian udah ngabisin ${diffDays} hari bareng-bareng di chat. Gak kerasa ya?`
                 };
             default:
                 return baseData;
         }
     };
 
+
     const handleDownloadSingle = async () => {
         setIsDownloading(true);
         setDownloadSuccess(false);
 
         try {
-            // 1. Wait for fonts to load
             await document.fonts.ready;
 
-            // 2. Wait for all images to load
             const images = document.querySelectorAll<HTMLImageElement>('#story-export-hidden img');
             await Promise.all(
                 Array.from(images).map((img: HTMLImageElement) => {
@@ -369,16 +419,13 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
                 })
             );
 
-            // 3. Get the hidden export element (full size, no transform)
             const exportElement = document.getElementById('story-export-hidden');
             if (!exportElement) throw new Error('Export element not found');
 
-            // 4. Small delay to ensure everything is rendered
             await new Promise(resolve => setTimeout(resolve, 500));
 
-            // 5. Capture with html2canvas at high quality
             const capturedCanvas = await html2canvas(exportElement, {
-                scale: 3,                    // 3x for ultra HD
+                scale: 3,
                 useCORS: true,
                 allowTaint: false,
                 backgroundColor: null,
@@ -391,10 +438,8 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
                 removeContainer: true
             });
 
-            // 6. Convert to JPG with high quality
             capturedCanvas.toBlob((blob) => {
                 if (blob) {
-                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
                     const templateName = templates.find(t => t.id === selectedTemplate)?.name.replace(/\s+/g, '-') || 'story';
                     const p1 = chatData.participants[0] || 'UserA';
                     const p2 = chatData.participants[1] || 'UserB';
@@ -405,7 +450,7 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
                     setDownloadSuccess(true);
                     setTimeout(() => setDownloadSuccess(false), 3000);
                 }
-            }, 'image/jpeg', 0.98); // 98% quality for best result
+            }, 'image/jpeg', 0.98);
 
         } catch (error) {
             console.error('Download error:', error);
@@ -428,10 +473,8 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
                 setSelectedTemplate(templateId);
                 setCurrentSlide(i);
 
-                // Wait for React render
                 await new Promise(resolve => setTimeout(resolve, 1000));
 
-                // Wait for images
                 const images = document.querySelectorAll<HTMLImageElement>('#story-export-hidden img');
                 await Promise.all(
                     Array.from(images).map((img: HTMLImageElement) => {
@@ -508,37 +551,96 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
 
     return (
         <div className="fixed inset-0 z-50 bg-white dark:bg-stone-950 flex">
-            {/* LEFT SIDEBAR - Fixed Width */}
-            <div className="w-[360px] flex-shrink-0 border-r border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-900 flex flex-col">
-                {/* Header */}
-                <div className="p-6 border-b border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950">
-                    <div className="flex items-center justify-between mb-2">
-                        <h2 className="text-xl font-bold text-stone-900 dark:text-white">
-                            Buat Story IG/WA
-                        </h2>
-                        <button
-                            onClick={onBack}
-                            className="p-2 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors"
-                        >
-                            <X size={20} className="text-stone-600 dark:text-stone-400" />
-                        </button>
-                    </div>
-                    <p className="text-sm text-stone-600 dark:text-stone-400">
-                        Aesthetic & Viral-Friendly
-                    </p>
+            {/* ========================================================== */}
+            {/* MOBILE LAYOUT - FIXED PREVIEW SCALING                      */}
+            {/* ========================================================== */}
+            <div className="md:hidden flex flex-col h-full w-full bg-stone-50 dark:bg-stone-900 overflow-hidden">
+
+                {/* 1. Header (Fixed Top) */}
+                <div className="flex-none flex items-center justify-between px-4 py-3 border-b border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 z-20 relative shadow-sm h-14">
+                    <h2 className="text-lg font-bold text-stone-900 dark:text-white">
+                        Buat Story IG/WA
+                    </h2>
+                    <button
+                        onClick={onBack}
+                        className="p-2 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors"
+                    >
+                        <X size={20} className="text-stone-600 dark:text-stone-400" />
+                    </button>
                 </div>
 
-                {/* Scrollable Content */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    {/* Template Selection */}
-                    <div>
-                        <h3 className="text-sm font-bold text-stone-900 dark:text-white mb-3 flex items-center gap-2">
-                            <span className="text-lg">✨</span>
-                            Pilih Template
-                        </h3>
-                        <div className="grid grid-cols-2 gap-3">
+                {/* 2. Preview Area (Flex Grow - Middle) */}
+                <div className="flex-1 relative w-full overflow-hidden flex items-center justify-center z-10 bg-stone-100 dark:bg-stone-900">
+                    <div className="absolute inset-0"
+                        style={{
+                            backgroundImage: currentTheme?.gradient || 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)',
+                            backgroundSize: '200% 200%',
+                            animation: 'gradientShift 10s ease infinite'
+                        }}
+                    >
+                        <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, #000 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+                    </div>
+
+                    {/* Navigation Arrows */}
+                    <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-2 z-20 pointer-events-none">
+                        <button onClick={prevSlide} className="pointer-events-auto p-2 bg-white/30 backdrop-blur-md rounded-full shadow-lg border border-white/20 active:scale-95 transition-transform">
+                            <ChevronLeft className="w-6 h-6 text-stone-900" />
+                        </button>
+                        <button onClick={nextSlide} className="pointer-events-auto p-2 bg-white/30 backdrop-blur-md rounded-full shadow-lg border border-white/20 active:scale-95 transition-transform">
+                            <ChevronRight className="w-6 h-6 text-stone-900" />
+                        </button>
+                    </div>
+
+                    {/* Page Indicator */}
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20">
+                        <div className="px-3 py-1 bg-black/20 backdrop-blur-md rounded-full border border-white/10">
+                            <span className="text-xs font-bold text-white shadow-sm">
+                                {currentSlide + 1} / {templates.length}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* DYNAMIC SCALED PREVIEW CONTAINER */}
+                    {/* Menggunakan transform: scale() dengan rumus min() untuk fit-to-screen */}
+                    <div
+                        className="relative shadow-2xl rounded-[24px] overflow-hidden origin-center flex-shrink-0"
+                        style={{
+                            width: '1080px',
+                            height: '1920px',
+                            // Dynamic scale calculated in useEffect
+                            transform: `scale(${mobileScale})`,
+                        }}
+                    >
+                        <div id="story-canvas-export-mobile" className="w-full h-full">
+                            <StoryTemplate
+                                template={selectedTemplate}
+                                theme={selectedTheme}
+                                data={getTemplateData(selectedTemplate)}
+                                privacyMode={privacyMode}
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                {/* 3. Controls (Bottom - Vertical Efficient) */}
+                <div className="flex-none bg-white dark:bg-stone-950 border-t border-stone-200 dark:border-stone-800 z-30 pb-[90px]">
+                    <div className="py-3 px-4 space-y-3">
+                        {/* Title & Privacy Toggle */}
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-xs font-bold text-stone-900 dark:text-white flex items-center gap-1 uppercase tracking-wider">
+                                Templates & Themes
+                            </h3>
+                            <button
+                                onClick={() => setPrivacyMode(prev => ({ ...prev, hideNames: !prev.hideNames }))}
+                                className={`text-[10px] px-2 py-1 rounded-full border transition-all ${privacyMode.hideNames ? 'bg-purple-100 border-purple-500 text-purple-700 font-bold' : 'border-stone-200 text-stone-500'}`}
+                            >
+                                {privacyMode.hideNames ? 'Nama: Hidden' : 'Nama: Show'}
+                            </button>
+                        </div>
+
+                        {/* Top: Templates (Horizontal Scroll) */}
+                        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 snap-x">
                             {templates.map((template) => {
-                                const Icon = template.icon;
                                 const isActive = selectedTemplate === template.id;
                                 return (
                                     <button
@@ -548,38 +650,24 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
                                             setCurrentSlide(templates.findIndex(t => t.id === template.id));
                                         }}
                                         className={`
-                                            relative p-4 rounded-2xl border-2 transition-all text-left
+                                            flex-shrink-0 w-16 snap-center flex flex-col items-center gap-1 p-1.5 rounded-xl border transition-all
                                             ${isActive
-                                                ? 'border-purple-500 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30 shadow-lg shadow-purple-500/20'
-                                                : 'border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 hover:border-purple-300 dark:hover:border-purple-700 hover:shadow-md'
+                                                ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 shadow-sm scale-105'
+                                                : 'border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 opacity-70 hover:opacity-100'
                                             }
                                         `}
                                     >
-                                        {isActive && (
-                                            <div className="absolute -top-1 -right-1 w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
-                                                <Check size={14} className="text-white" />
-                                            </div>
-                                        )}
-                                        <div className="text-2xl mb-2">{template.emoji}</div>
-                                        <div className="text-sm font-bold text-stone-900 dark:text-white mb-1">
+                                        <div className="text-xl">{template.emoji}</div>
+                                        <span className={`text-[9px] font-medium leading-tight text-center line-clamp-2 w-full ${isActive ? 'text-purple-700 dark:text-purple-300' : 'text-stone-600 dark:text-stone-400'}`}>
                                             {template.name}
-                                        </div>
-                                        <div className="text-xs text-stone-600 dark:text-stone-400 leading-tight">
-                                            {template.desc}
-                                        </div>
+                                        </span>
                                     </button>
                                 );
                             })}
                         </div>
-                    </div>
 
-                    {/* Theme Selection */}
-                    <div>
-                        <h3 className="text-sm font-bold text-stone-900 dark:text-white mb-3 flex items-center gap-2">
-                            <span className="text-lg">🎨</span>
-                            Pilih Tema Warna
-                        </h3>
-                        <div className="grid grid-cols-2 gap-3">
+                        {/* Bottom: Themes (Horizontal Scroll) */}
+                        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide -mx-4 px-4">
                             {themes.map((theme) => {
                                 const isActive = selectedTheme === theme.id;
                                 return (
@@ -587,302 +675,304 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
                                         key={theme.id}
                                         onClick={() => setSelectedTheme(theme.id)}
                                         className={`
-                                            relative p-3 rounded-xl border-2 transition-all
-                                            ${isActive
-                                                ? 'border-purple-500 shadow-lg shadow-purple-500/20'
-                                                : 'border-stone-200 dark:border-stone-700 hover:border-purple-300 dark:hover:border-purple-700'
-                                            }
+                                            flex-shrink-0 p-1 rounded-lg border transition-all flex items-center gap-1.5 pr-2
+                                            ${isActive ? 'border-purple-500 bg-stone-50 ring-1 ring-purple-500' : 'border-stone-200 opacity-80'}
                                         `}
                                     >
-                                        {isActive && (
-                                            <div className="absolute -top-1 -right-1 w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center">
-                                                <Check size={12} className="text-white" />
-                                            </div>
-                                        )}
-                                        <div
-                                            className="w-full h-12 rounded-lg mb-2"
-                                            style={{ background: theme.gradient }}
-                                        />
-                                        <div className="text-xs font-semibold text-stone-900 dark:text-white text-center">
-                                            {theme.name}
-                                        </div>
+                                        <div className="w-5 h-5 rounded hover:scale-110 transition-transform" style={{ background: theme.gradient }} />
+                                        {isActive && <span className="text-[10px] font-bold text-stone-800">{theme.name}</span>}
                                     </button>
-                                );
+                                )
                             })}
                         </div>
                     </div>
-
-                    {/* Privacy Mode */}
-                    <div>
-                        <h3 className="text-sm font-bold text-stone-900 dark:text-white mb-3 flex items-center gap-2">
-                            <span className="text-lg">🔒</span>
-                            Mode Privasi
-                        </h3>
-                        <div className="space-y-2">
-                            <label className="flex items-center gap-3 p-3 rounded-xl bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 cursor-pointer hover:border-purple-300 dark:hover:border-purple-700 transition-colors">
-                                <input
-                                    type="checkbox"
-                                    checked={privacyMode.hideNames}
-                                    onChange={(e) => setPrivacyMode({ ...privacyMode, hideNames: e.target.checked })}
-                                    className="w-4 h-4 text-purple-500 rounded focus:ring-2 focus:ring-purple-500"
-                                />
-                                <div className="flex-1">
-                                    <div className="text-sm font-medium text-stone-900 dark:text-white">Sembunyikan Nama</div>
-                                    <div className="text-xs text-stone-600 dark:text-stone-400">Ganti nama dengan ***</div>
-                                </div>
-                            </label>
-                            <label className="flex items-center gap-3 p-3 rounded-xl bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 cursor-pointer hover:border-purple-300 dark:hover:border-purple-700 transition-colors">
-                                <input
-                                    type="checkbox"
-                                    checked={privacyMode.blurSensitive}
-                                    onChange={(e) => setPrivacyMode({ ...privacyMode, blurSensitive: e.target.checked })}
-                                    className="w-4 h-4 text-purple-500 rounded focus:ring-2 focus:ring-purple-500"
-                                />
-                                <div className="flex-1">
-                                    <div className="text-sm font-medium text-stone-900 dark:text-white">Blur Kata Sensitif</div>
-                                    <div className="text-xs text-stone-600 dark:text-stone-400">Blur kata seperti "sayang"</div>
-                                </div>
-                            </label>
-                            <label className="flex items-center gap-3 p-3 rounded-xl bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 cursor-pointer hover:border-purple-300 dark:hover:border-purple-700 transition-colors">
-                                <input
-                                    type="checkbox"
-                                    checked={privacyMode.safeQuote}
-                                    onChange={(e) => setPrivacyMode({ ...privacyMode, safeQuote: e.target.checked })}
-                                    className="w-4 h-4 text-purple-500 rounded focus:ring-2 focus:ring-purple-500"
-                                />
-                                <div className="flex-1">
-                                    <div className="text-sm font-medium text-stone-900 dark:text-white">Safe Quote Mode</div>
-                                    <div className="text-xs text-stone-600 dark:text-stone-400">Potong quote yang terlalu panjang</div>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-
-                    {/* Download Mode */}
-                    <div>
-                        <h3 className="text-sm font-bold text-stone-900 dark:text-white mb-3 flex items-center gap-2">
-                            <span className="text-lg">📦</span>
-                            Mode Download
-                        </h3>
-                        <div className="grid grid-cols-2 gap-3">
-                            <button
-                                onClick={() => setDownloadMode('single')}
-                                className={`
-                                    p-3 rounded-xl border-2 transition-all text-center
-                                    ${downloadMode === 'single'
-                                        ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/30'
-                                        : 'border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 hover:border-purple-300 dark:hover:border-purple-700'
-                                    }
-                                `}
-                            >
-                                <div className="text-2xl mb-1">📄</div>
-                                <div className="text-xs font-semibold text-stone-900 dark:text-white">Single Slide</div>
-                                <div className="text-xs text-stone-600 dark:text-stone-400">1 template saja</div>
-                            </button>
-                            <button
-                                onClick={() => setDownloadMode('multi')}
-                                className={`
-                                    p-3 rounded-xl border-2 transition-all text-center
-                                    ${downloadMode === 'multi'
-                                        ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/30'
-                                        : 'border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 hover:border-purple-300 dark:hover:border-purple-700'
-                                    }
-                                `}
-                            >
-                                <div className="text-2xl mb-1">📦</div>
-                                <div className="text-xs font-semibold text-stone-900 dark:text-white">Multi Pack</div>
-                                <div className="text-xs text-stone-600 dark:text-stone-400">Semua template (ZIP)</div>
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Preview Info */}
-                    <div className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 rounded-xl p-4 border border-purple-200 dark:border-purple-800">
-                        <div className="flex items-start gap-2 mb-3">
-                            <Info size={16} className="text-purple-600 dark:text-purple-400 mt-0.5" />
-                            <div className="text-xs font-bold text-purple-900 dark:text-purple-100">Preview Info</div>
-                        </div>
-                        <div className="space-y-2 text-xs">
-                            <div className="flex justify-between">
-                                <span className="text-purple-700 dark:text-purple-300">Template:</span>
-                                <span className="font-semibold text-purple-900 dark:text-purple-100">
-                                    {templates.find(t => t.id === selectedTemplate)?.name}
-                                </span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-purple-700 dark:text-purple-300">Tema:</span>
-                                <span className="font-semibold text-purple-900 dark:text-purple-100">
-                                    {themes.find(t => t.id === selectedTheme)?.name}
-                                </span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-purple-700 dark:text-purple-300">Privasi:</span>
-                                <span className="font-semibold text-purple-900 dark:text-purple-100">
-                                    {Object.values(privacyMode).some(v => v) ? 'Aktif' : 'Tidak Aktif'}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
                 </div>
 
-                {/* Download Button - Sticky Bottom */}
-                <div className="p-6 border-t border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950">
+                {/* 4. Footer (Fixed Bottom - High Z-Index) */}
+                <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/95 dark:bg-stone-950/95 backdrop-blur-md border-t border-stone-200 dark:border-stone-800 z-50 h-[84px] flex items-center justify-center shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
                     <Button
                         onClick={handleDownload}
                         disabled={isDownloading}
-                        className={`
-                            w-full !py-4 text-base font-bold transition-all
-                            ${downloadSuccess
-                                ? '!bg-green-500 hover:!bg-green-600'
-                                : '!bg-gradient-to-r !from-purple-600 !to-pink-600 hover:!from-purple-700 hover:!to-pink-700'
-                            }
-                        `}
+                        className={`w-full !py-3 font-bold text-sm shadow-xl transition-transform active:scale-95 ${downloadSuccess ? '!bg-green-500' : '!bg-gradient-to-r !from-purple-600 !to-pink-600'}`}
                     >
-                        {isDownloading ? (
-                            <>
-                                <Loader2 size={20} className="animate-spin" />
-                                {downloadMode === 'multi' ? 'Membuat Story Pack...' : 'Membuat Story...'}
-                            </>
-                        ) : downloadSuccess ? (
-                            <>
-                                <Check size={20} />
-                                Story Berhasil Dibuat!
-                            </>
-                        ) : (
-                            <>
-                                <Download size={20} />
-                                {downloadMode === 'multi' ? 'Download Story Pack (ZIP)' : 'Download Story'}
-                            </>
-                        )}
+                        {isDownloading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : downloadSuccess ? <Check className="mr-2 h-4 w-4" /> : <Download className="mr-2 h-4 w-4" />}
+                        {downloadSuccess ? 'Tersimpan!' : 'Download Story'}
                     </Button>
-                    <p className="text-xs text-center text-stone-600 dark:text-stone-400 mt-3">
-                        {downloadMode === 'multi'
-                            ? 'Semua 6 template akan didownload dalam 1 file ZIP'
-                            : 'File siap upload ke Instagram Story (1080×1920)'
-                        }
-                    </p>
                 </div>
             </div>
 
-            {/* RIGHT PREVIEW AREA */}
-            <div
-                className="flex-1 relative overflow-hidden"
-                style={{
-                    background: isDarkMode
-                        ? 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)'
-                        : currentTheme?.gradient || 'linear-gradient(135deg, #f5f5f5 0%, #e5e5e5 100%)',
-                    backgroundSize: '200% 200%',
-                    animation: 'gradientShift 10s ease infinite'
-                }}
-            >
-                {/* Background Pattern */}
-                <div className="absolute inset-0 opacity-5">
-                    <div
-                        className="absolute inset-0"
-                        style={{
-                            backgroundImage: 'radial-gradient(circle, #000 1px, transparent 1px)',
-                            backgroundSize: '40px 40px'
-                        }}
-                    />
-                </div>
 
-                {/* Slide Counter - Top Center */}
-                <div className="absolute top-8 left-1/2 -translate-x-1/2 z-20">
-                    <div className="px-6 py-2.5 bg-white/90 dark:bg-stone-900/90 backdrop-blur-xl rounded-full shadow-lg border border-stone-200/50 dark:border-stone-700/50">
-                        <span className="text-sm font-bold text-stone-900 dark:text-white">
-                            {currentSlide + 1} / {templates.length}
-                        </span>
+            {/* ========================================================== */}
+            {/* DESKTOP LAYOUT (Unchanged from your preferred version)     */}
+            {/* ========================================================== */}
+            <div className="hidden md:flex h-full w-full">
+                {/* LEFT SIDEBAR - Fixed Width */}
+                <div className="w-[360px] flex-shrink-0 border-r border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-900 flex flex-col h-full">
+                    {/* Header */}
+                    <div className="p-6 border-b border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950">
+                        <div className="flex items-center justify-between mb-2">
+                            <h2 className="text-xl font-bold text-stone-900 dark:text-white">
+                                Buat Story IG/WA
+                            </h2>
+                            <button
+                                onClick={onBack}
+                                className="p-2 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors"
+                            >
+                                <X size={20} className="text-stone-600 dark:text-stone-400" />
+                            </button>
+                        </div>
+                        <p className="text-sm text-stone-600 dark:text-stone-400">
+                            Aesthetic & Viral-Friendly
+                        </p>
+                    </div>
+
+                    {/* Scrollable Content */}
+                    <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                        {/* Template Selection */}
+                        <div>
+                            <h3 className="text-sm font-bold text-stone-900 dark:text-white mb-3 flex items-center gap-2">
+                                <span className="text-lg">✨</span>
+                                Pilih Template
+                            </h3>
+                            <div className="grid grid-cols-2 gap-3">
+                                {templates.map((template) => {
+                                    const isActive = selectedTemplate === template.id;
+                                    return (
+                                        <button
+                                            key={template.id}
+                                            onClick={() => {
+                                                setSelectedTemplate(template.id);
+                                                setCurrentSlide(templates.findIndex(t => t.id === template.id));
+                                            }}
+                                            className={`
+                                                relative p-4 rounded-2xl border-2 transition-all text-left
+                                                ${isActive
+                                                    ? 'border-purple-500 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30 shadow-lg shadow-purple-500/20'
+                                                    : 'border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 hover:border-purple-300 dark:hover:border-purple-700 hover:shadow-md'
+                                                }
+                                            `}
+                                        >
+                                            {isActive && (
+                                                <div className="absolute -top-1 -right-1 w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
+                                                    <Check size={14} className="text-white" />
+                                                </div>
+                                            )}
+                                            <div className="text-2xl mb-2">{template.emoji}</div>
+                                            <div className="text-sm font-bold text-stone-900 dark:text-white mb-1">
+                                                {template.name}
+                                            </div>
+                                            <div className="text-xs text-stone-600 dark:text-stone-400 leading-tight">
+                                                {template.desc}
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Theme Selection */}
+                        <div>
+                            <h3 className="text-sm font-bold text-stone-900 dark:text-white mb-3 flex items-center gap-2">
+                                <span className="text-lg">🎨</span>
+                                Pilih Tema Warna
+                            </h3>
+                            <div className="grid grid-cols-2 gap-3">
+                                {themes.map((theme) => {
+                                    const isActive = selectedTheme === theme.id;
+                                    return (
+                                        <button
+                                            key={theme.id}
+                                            onClick={() => setSelectedTheme(theme.id)}
+                                            className={`
+                                                relative p-3 rounded-xl border-2 transition-all
+                                                ${isActive
+                                                    ? 'border-purple-500 shadow-lg shadow-purple-500/20'
+                                                    : 'border-stone-200 dark:border-stone-700 hover:border-purple-300 dark:hover:border-purple-700'
+                                                }
+                                            `}
+                                        >
+                                            {isActive && (
+                                                <div className="absolute -top-1 -right-1 w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center">
+                                                    <Check size={12} className="text-white" />
+                                                </div>
+                                            )}
+                                            <div
+                                                className="w-full h-12 rounded-lg mb-2"
+                                                style={{ background: theme.gradient }}
+                                            />
+                                            <div className="text-xs font-semibold text-stone-900 dark:text-white text-center">
+                                                {theme.name}
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Privacy & Download Options */}
+                        <div className="space-y-4">
+                            <div>
+                                <h3 className="text-xs font-bold uppercase text-stone-500 mb-2">Privasi</h3>
+                                <div className="space-y-2">
+                                    <label className="flex items-center justify-between p-2 rounded-lg hover:bg-stone-100 cursor-pointer">
+                                        <span className="text-sm">Sembunyikan Nama</span>
+                                        <input type="checkbox" checked={privacyMode.hideNames} onChange={(e) => setPrivacyMode({ ...privacyMode, hideNames: e.target.checked })} className="accent-purple-500" />
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h3 className="text-xs font-bold uppercase text-stone-500 mb-2">Mode Download</h3>
+                                <div className="flex gap-2">
+                                    <button onClick={() => setDownloadMode('single')} className={`flex-1 py-2 text-sm border rounded-lg ${downloadMode === 'single' ? 'bg-purple-50 border-purple-500 text-purple-700' : 'bg-white'}`}>Single</button>
+                                    <button onClick={() => setDownloadMode('multi')} className={`flex-1 py-2 text-sm border rounded-lg ${downloadMode === 'multi' ? 'bg-purple-50 border-purple-500 text-purple-700' : 'bg-white'}`}>Pack (ZIP)</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Download Button - Sticky Bottom */}
+                    <div className="p-6 border-t border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950">
+                        <Button
+                            onClick={handleDownload}
+                            disabled={isDownloading}
+                            className={`
+                                w-full !py-4 text-base font-bold transition-all
+                                ${downloadSuccess
+                                    ? '!bg-green-500 hover:!bg-green-600'
+                                    : '!bg-gradient-to-r !from-purple-600 !to-pink-600 hover:!from-purple-700 hover:!to-pink-700'
+                                }
+                            `}
+                        >
+                            {isDownloading ? (
+                                <>
+                                    <Loader2 size={20} className="animate-spin" />
+                                    {downloadMode === 'multi' ? 'Membuat Story Pack...' : 'Membuat Story...'}
+                                </>
+                            ) : downloadSuccess ? (
+                                <>
+                                    <Check size={20} />
+                                    Story Berhasil Dibuat!
+                                </>
+                            ) : (
+                                <>
+                                    <Download size={20} />
+                                    {downloadMode === 'multi' ? 'Download ZIP' : 'Download Story'}
+                                </>
+                            )}
+                        </Button>
                     </div>
                 </div>
 
-                {/* Navigation Buttons */}
-                <button
-                    onClick={prevSlide}
-                    className="absolute left-8 top-1/2 -translate-y-1/2 z-20 p-3 bg-white/90 dark:bg-stone-900/90 backdrop-blur-xl rounded-full shadow-xl border border-stone-200/50 dark:border-stone-700/50 hover:scale-110 hover:bg-white dark:hover:bg-stone-800 transition-all"
-                >
-                    <ChevronLeft size={24} className="text-stone-900 dark:text-white" />
-                </button>
-
-                <button
-                    onClick={nextSlide}
-                    className="absolute right-8 top-1/2 -translate-y-1/2 z-20 p-3 bg-white/90 dark:bg-stone-900/90 backdrop-blur-xl rounded-full shadow-xl border border-stone-200/50 dark:border-stone-700/50 hover:scale-110 hover:bg-white dark:hover:bg-stone-800 transition-all"
-                >
-                    <ChevronRight size={24} className="text-stone-900 dark:text-white" />
-                </button>
-
-                {/* Story Preview - Centered with Proper Scaling */}
-                <div className="absolute inset-0 flex items-center justify-center p-8">
-                    <AnimatePresence mode="wait">
-                        <motion.div
-                            key={selectedTemplate + selectedTheme}
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            transition={{ duration: 0.3, ease: 'easeOut' }}
-                            className="relative"
-                            style={{
-                                width: '405px',
-                                height: '720px'
-                            }}
-                        >
-                            {/* Story Canvas - Fixed 1080x1920, Scaled for Preview */}
-                            <div
-                                className="origin-top-left overflow-hidden rounded-[32px] shadow-2xl"
-                                style={{
-                                    width: '1080px',
-                                    height: '1920px',
-                                    transform: 'scale(0.375)',
-                                    transformOrigin: 'top left',
-                                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
-                                }}
-                            >
-                                <div id="story-canvas-export">
-                                    <StoryTemplate
-                                        template={selectedTemplate}
-                                        theme={selectedTheme}
-                                        data={getTemplateData(selectedTemplate)}
-                                        privacyMode={privacyMode}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Template Label - Bottom */}
-                            <div className="absolute -bottom-14 left-1/2 -translate-x-1/2 whitespace-nowrap">
-                                <div className="px-6 py-2.5 bg-white/90 dark:bg-stone-900/90 backdrop-blur-xl rounded-full shadow-lg border border-stone-200/50 dark:border-stone-700/50">
-                                    <span className="text-sm font-semibold text-stone-900 dark:text-white">
-                                        {templates.find(t => t.id === selectedTemplate)?.name} • {themes.find(t => t.id === selectedTheme)?.name}
-                                    </span>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </AnimatePresence>
-                </div>
-
-                {/* Hidden Export Element - Full Size, No Transform */}
+                {/* RIGHT PREVIEW AREA - Desktop */}
                 <div
-                    id="story-export-hidden"
+                    className="flex-1 relative overflow-hidden"
                     style={{
-                        position: 'absolute',
-                        left: '-9999px',
-                        top: 0,
-                        width: '1080px',
-                        height: '1920px',
-                        overflow: 'hidden'
+                        backgroundImage: isDarkMode
+                            ? 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)'
+                            : currentTheme?.gradient || 'linear-gradient(135deg, #f5f5f5 0%, #e5e5e5 100%)',
+                        backgroundSize: '200% 200%',
+                        animation: 'gradientShift 10s ease infinite'
                     }}
                 >
-                    <StoryTemplate
-                        template={selectedTemplate}
-                        theme={selectedTheme}
-                        data={getTemplateData(selectedTemplate)}
-                        privacyMode={privacyMode}
-                    />
+                    {/* Background Pattern */}
+                    <div className="absolute inset-0 opacity-5 pointer-events-none">
+                        <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle, #000 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+                    </div>
+
+                    {/* Slide Counter */}
+                    <div className="absolute top-8 left-1/2 -translate-x-1/2 z-20">
+                        <div className="px-6 py-2.5 bg-white/90 dark:bg-stone-900/90 backdrop-blur-xl rounded-full shadow-lg border border-stone-200/50 dark:border-stone-700/50">
+                            <span className="text-sm font-bold text-stone-900 dark:text-white">
+                                {currentSlide + 1} / {templates.length}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Navigation Buttons */}
+                    <button
+                        onClick={prevSlide}
+                        className="absolute left-8 top-1/2 -translate-y-1/2 z-20 p-3 bg-white/90 dark:bg-stone-900/90 backdrop-blur-xl rounded-full shadow-xl border border-stone-200/50 dark:border-stone-700/50 hover:scale-110 hover:bg-white dark:hover:bg-stone-800 transition-all"
+                    >
+                        <ChevronLeft size={24} className="text-stone-900 dark:text-white" />
+                    </button>
+
+                    <button
+                        onClick={nextSlide}
+                        className="absolute right-8 top-1/2 -translate-y-1/2 z-20 p-3 bg-white/90 dark:bg-stone-900/90 backdrop-blur-xl rounded-full shadow-xl border border-stone-200/50 dark:border-stone-700/50 hover:scale-110 hover:bg-white dark:hover:bg-stone-800 transition-all"
+                    >
+                        <ChevronRight size={24} className="text-stone-900 dark:text-white" />
+                    </button>
+
+                    {/* Story Preview - Centered with Proper Scaling */}
+                    <div className="absolute inset-0 flex items-center justify-center p-8">
+                        <AnimatePresence mode="wait">
+                            <motion.div
+                                key={selectedTemplate + selectedTheme}
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                transition={{ duration: 0.3, ease: 'easeOut' }}
+                                className="relative"
+                                style={{ width: '405px', height: '720px' }}
+                            >
+                                {/* Story Canvas - Fixed 1080x1920, Scaled for Preview */}
+                                <div
+                                    className="origin-top-left overflow-hidden rounded-[32px] shadow-2xl"
+                                    style={{
+                                        width: '1080px',
+                                        height: '1920px',
+                                        transform: 'scale(0.375)',
+                                        transformOrigin: 'top left',
+                                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+                                    }}
+                                >
+                                    <div id="story-canvas-export">
+                                        <StoryTemplate
+                                            template={selectedTemplate}
+                                            theme={selectedTheme}
+                                            data={getTemplateData(selectedTemplate)}
+                                            privacyMode={privacyMode}
+                                        />
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </AnimatePresence>
+                    </div>
                 </div>
+            </div>
+
+            {/* Hidden Export Element - Shared for both */}
+            <div
+                id="story-export-hidden"
+                style={{
+                    position: 'absolute',
+                    left: '-9999px',
+                    top: 0,
+                    width: '1080px',
+                    height: '1920px',
+                    overflow: 'hidden'
+                }}
+            >
+                <StoryTemplate
+                    template={selectedTemplate}
+                    theme={selectedTheme}
+                    data={getTemplateData(selectedTemplate)}
+                    privacyMode={privacyMode}
+                />
             </div>
 
             <style>{`
                 @keyframes gradientShift {
                     0%, 100% { background-position: 0% 50%; }
                     50% { background-position: 100% 50%; }
+                }
+                 .scrollbar-hide::-webkit-scrollbar {
+                    display: none;
+                }
+                .scrollbar-hide {
+                    -ms-overflow-style: none;
+                    scrollbar-width: none;
                 }
             `}</style>
         </div>
