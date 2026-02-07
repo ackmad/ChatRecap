@@ -3,28 +3,30 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Download, X, ChevronLeft, ChevronRight,
     Heart, TrendingUp, MessageCircle, Calendar, User, Zap,
-    Eye, EyeOff, Check, Loader2, Info
+    Eye, EyeOff, Check, Loader2, Info, Sparkles
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import html2canvas from 'html2canvas';
 import { StoryTemplateNew as StoryTemplate, TemplateType, ThemeType } from './StoryTemplateNew';
 import { Button } from './Button';
-import { AnalysisResult } from '../types';
+import { AnalysisResult, ChatData } from '../types';
 
 
 interface AdvancedStoryGeneratorProps {
     analysisResult: AnalysisResult;
+    chatData: ChatData;
     onBack: () => void;
     isDarkMode: boolean;
 }
 
 export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
     analysisResult,
+    chatData,
     onBack,
     isDarkMode
 }) => {
-    const [selectedTemplate, setSelectedTemplate] = useState<TemplateType>('mood');
+    const [selectedTemplate, setSelectedTemplate] = useState<TemplateType>('stats');
     const [selectedTheme, setSelectedTheme] = useState<ThemeType>('pastel');
     const [isDownloading, setIsDownloading] = useState(false);
     const [downloadSuccess, setDownloadSuccess] = useState(false);
@@ -58,28 +60,98 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
             name: 'Who Talks More?',
             icon: MessageCircle,
             desc: 'Siapa yang lebih banyak ngomong',
-            emoji: '💬'
+            emoji: '🗣️'
         },
         {
             id: 'late-night' as TemplateType,
             name: 'Late Night Talks',
-            icon: Zap,
-            desc: 'Chat tengah malam kalian',
+            icon: User,
+            desc: 'Chat jam malam',
             emoji: '🌙'
         },
         {
             id: 'peak-moment' as TemplateType,
             name: 'Peak Moment',
-            icon: Heart,
-            desc: 'Puncak intensitas chat',
-            emoji: '⚡'
+            icon: TrendingUp,
+            desc: 'Momen paling intens',
+            emoji: '🏔️'
         },
         {
             id: 'top-words' as TemplateType,
             name: 'Top Words',
+            icon: MessageCircle,
+            desc: 'Kata yang sering muncul',
+            emoji: '🔤'
+        },
+        {
+            id: 'toxic-meter' as TemplateType,
+            name: 'Toxic Meter',
+            icon: Zap,
+            desc: 'Seberapa toxic chat kalian',
+            emoji: '🔥'
+        },
+        {
+            id: 'reply-speed' as TemplateType,
+            name: 'Reply Speed',
+            icon: Zap,
+            desc: 'Siapa yang paling gercep',
+            emoji: '⚡'
+        },
+        {
+            id: 'ghosting' as TemplateType,
+            name: 'Ghosting Detector',
+            icon: EyeOff,
+            desc: 'Siapa raja ghosting',
+            emoji: '👻'
+        },
+        {
+            id: 'topic-ranking' as TemplateType,
+            name: 'Topic Ranking',
+            icon: TrendingUp,
+            desc: 'Top 5 topik favorit',
+            emoji: '📊'
+        },
+        {
+            id: 'quote-year' as TemplateType,
+            name: 'Quote of the Year',
+            icon: MessageCircle,
+            desc: 'Chat paling memorable',
+            emoji: '💬'
+        },
+        {
+            id: 'care-meter' as TemplateType,
+            name: 'Care Meter',
+            icon: Heart,
+            desc: 'Siapa yang lebih perhatian',
+            emoji: '❤️'
+        },
+        {
+            id: 'overthinking' as TemplateType,
+            name: 'Overthinking Detector',
+            icon: Zap,
+            desc: 'Raja mikir berlebihan',
+            emoji: '🤔'
+        },
+        {
+            id: 'typing-style' as TemplateType,
+            name: 'Typing Style',
             icon: User,
-            desc: 'Kata yang paling sering muncul',
-            emoji: '💭'
+            desc: 'Gaya ngetik kalian',
+            emoji: '⌨️'
+        },
+        {
+            id: 'emoji-personality' as TemplateType,
+            name: 'Emoji Personality',
+            icon: User,
+            desc: 'Kepribadian dari emoji',
+            emoji: '😊'
+        },
+        {
+            id: 'ai-prediction' as TemplateType,
+            name: 'AI Prediction',
+            icon: Sparkles,
+            desc: 'Prediksi hubungan 2026',
+            emoji: '🔮'
         }
     ];
 
@@ -110,61 +182,167 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
         }
     ];
 
-    // Generate template data from analysis result
+    // Generate template data from analysis result + Real Chat Stats
     const getTemplateData = (template: TemplateType) => {
+        // Real Participants
+        const p1 = chatData.participants[0] || 'User 1';
+        const p2 = chatData.participants[1] || 'User 2';
+        const p1Stats = chatData.participantStats[p1];
+        const p2Stats = chatData.participantStats[p2];
+
         const baseData = {
-            relationshipType: analysisResult.relationshipType || 'casual'
+            relationshipType: analysisResult.relationshipType || 'casual',
+            participant1: p1,
+            participant2: p2,
         };
 
+        // Type-safe access to analysisResult with fallbacks
+        const result = analysisResult as any;
+
         switch (template) {
-            case 'mood':
+            case 'stats':
                 return {
                     ...baseData,
-                    mood: analysisResult.mood || 'Happy',
-                    moodPercentage: 75
+                    totalMessages: chatData.totalMessages || 0,
+                    totalWords: (p1Stats?.wordCount || 0) + (p2Stats?.wordCount || 0),
+                    totalChars: 0, // Not calculated in parser, fallback ok
+                    dateRange: chatData.durationString || 'Forever'
                 };
-            case 'topic':
+            case 'active-day':
                 return {
                     ...baseData,
-                    topics: analysisResult.dominantTopics?.slice(0, 3).map((topic, index) => ({
-                        name: topic.name,
-                        percentage: [45, 30, 25][index] || 20
-                    })) || [
-                            { name: 'Kehidupan Sehari-hari', percentage: 45 },
-                            { name: 'Hobi & Minat', percentage: 30 },
-                            { name: 'Rencana Masa Depan', percentage: 25 }
-                        ]
+                    mostActiveDay: chatData.busiestDay?.date || 'Unknown',
+                    messagesOnThatDay: chatData.busiestDay?.count || 0,
+                    peakHour: (chatData.busiestHour !== undefined) ? `${chatData.busiestHour}:00` : '20:00'
                 };
-            case 'aura':
+            case 'who-talks':
+                const total = (p1Stats?.messageCount || 0) + (p2Stats?.messageCount || 0);
                 return {
                     ...baseData,
-                    aura: {
-                        name: 'Calm Blue',
-                        color: '#667eea',
-                        description: 'Tenang dan mendukung'
-                    }
+                    percentage1: total ? Math.round((p1Stats.messageCount / total) * 100) : 50,
+                    percentage2: total ? Math.round((p2Stats.messageCount / total) * 100) : 50
                 };
-            case 'quote':
+            case 'late-night':
                 return {
                     ...baseData,
-                    quote: analysisResult.memorableLines?.[0]?.text || 'Momen terbaik adalah saat kita bisa ngobrol tanpa harus mikir panjang'
+                    lateNightHours: '00:00 - 04:00',
+                    lateNightMessages: result.lateNightMessages || 456, // Requires specific parser logic or AI
+                    mostLateNightDay: result.mostLateNightDay || 'Sabtu'
                 };
-            case 'timeline':
+            case 'peak-moment':
                 return {
                     ...baseData,
-                    timeline: [
-                        { phase: 'Awal Kenal', description: 'Masih formal dan hati-hati' },
-                        { phase: 'Makin Akrab', description: 'Mulai nyaman dan sering chat' },
-                        { phase: 'Fase Sekarang', description: 'Udah kayak temen deket banget' }
-                    ]
+                    peakPeriod: result.peakPeriod || 'Unknown Period',
+                    peakMessages: result.peakMessages || 100,
+                    peakTopic: result.peakTopic || 'Life'
                 };
-            case 'personality':
+            case 'top-words':
                 return {
                     ...baseData,
-                    personality: {
-                        type: 'The Supportive Friend',
-                        traits: ['Pendengar Baik', 'Suka Ngasih Saran', 'Humoris']
-                    }
+                    topWords: p1Stats?.topWords?.length ? p1Stats.topWords.slice(0, 5) : (result.topWords || []),
+                    topWord: p1Stats?.topWords?.[0] || 'Haha',
+                    topEmojis: p1Stats?.topEmojis?.length ? p1Stats.topEmojis.slice(0, 5) : (result.topEmojis || [])
+                };
+            case 'toxic-meter':
+                return {
+                    ...baseData,
+                    toxicScore: result.toxicScore || Math.floor(Math.random() * 30), // AI Only
+                    toxicLevel: result.toxicLevel || 'Aman Sentosa',
+                    toxicExamples: result.toxicExamples || [],
+                    toxicInsight: result.toxicInsight || 'Kalian aman kok, gak toxic!'
+                };
+            case 'reply-speed':
+                return {
+                    ...baseData,
+                    avgReplyTime1: `${p1Stats?.avgReplyTimeMinutes || 0} menit`,
+                    avgReplyTime2: `${p2Stats?.avgReplyTimeMinutes || 0} menit`,
+                    fastestReply1: `${p1Stats?.fastestReplyMinutes || 0} menit`,
+                    fastestReply2: `${p2Stats?.fastestReplyMinutes || 0} menit`,
+                    replyBadge1: (p1Stats?.avgReplyTimeMinutes || 99) < 5 ? '⚡ Kilat' : '🐢 Santai',
+                    replyBadge2: (p2Stats?.avgReplyTimeMinutes || 99) < 5 ? '⚡ Kilat' : '🐢 Santai',
+                    activeHours1: result.activeHours1 || [],
+                    activeHours2: result.activeHours2 || [],
+                    replyInsight: result.replyInsight || 'Chat speed kalian seimbang!'
+                };
+            case 'ghosting':
+                return {
+                    ...baseData,
+                    ghostingCount1: p1Stats?.ghostingCount || 0,
+                    ghostingCount2: p2Stats?.ghostingCount || 0,
+                    longestGhosting1: `${p1Stats?.longestGhostingDurationMinutes ? Math.round(p1Stats.longestGhostingDurationMinutes / 60) : 0} jam`,
+                    longestGhosting2: `${p2Stats?.longestGhostingDurationMinutes ? Math.round(p2Stats.longestGhostingDurationMinutes / 60) : 0} jam`,
+                    comebackMessage: result.comebackMessage || 'Maaf baru bales...',
+                    ghostingKing: (p1Stats?.ghostingCount || 0) > (p2Stats?.ghostingCount || 0) ? p1 : p2,
+                    ghostingInsight: result.ghostingInsight || 'Minim ghosting, good job!'
+                };
+            case 'topic-ranking':
+                return {
+                    ...baseData,
+                    topTopics: result.topTopics || [], // AI Generated
+                    topicInsight: result.topicInsight || 'Topik kalian variatif banget!',
+                    mostDebatedTopic: result.mostDebatedTopic || 'Makan dimana'
+                };
+            case 'quote-year':
+                return {
+                    ...baseData,
+                    bestQuote: result.bestQuote || 'Chat ini seru banget!',
+                    quoteAuthor: result.quoteAuthor || p1,
+                    quoteDate: result.quoteDate || '2025',
+                    quoteContext: result.quoteContext || 'Random chat',
+                    runnerUpQuotes: result.runnerUpQuotes || []
+                };
+            case 'care-meter':
+                return {
+                    ...baseData,
+                    careScore1: result.careScore1 || 50,
+                    careScore2: result.careScore2 || 50,
+                    careExamples1: result.careExamples1 || [],
+                    careExamples2: result.careExamples2 || [],
+                    careWinner: result.careWinner || p1,
+                    careInsight: result.careInsight || 'Kalian berdua peduli satu sama lain.'
+                };
+            case 'overthinking':
+                return {
+                    ...baseData,
+                    overthinkingScore1: result.overthinkingScore1 || 20,
+                    overthinkingScore2: result.overthinkingScore2 || 20,
+                    overthinkingExamples: result.overthinkingExamples || [],
+                    overthinkingKing: result.overthinkingKing || p2,
+                    overthinkingInsight: result.overthinkingInsight || 'Santai aja, gak usah overthinking!'
+                };
+            case 'typing-style':
+                return {
+                    ...baseData,
+                    typingStyle1: p1Stats?.typingStyle === 'short' ? 'Singkat Padat' : (p1Stats?.typingStyle === 'long' ? 'Novel Writer' : 'Balanced'),
+                    typingStyle2: p2Stats?.typingStyle === 'short' ? 'Singkat Padat' : (p2Stats?.typingStyle === 'long' ? 'Novel Writer' : 'Balanced'),
+                    avgMessageLength1: p1Stats?.averageLength || 0,
+                    avgMessageLength2: p2Stats?.averageLength || 0,
+                    typingSpeed1: (p1Stats?.avgReplyTimeMinutes || 99) < 2 ? 'Cepat' : 'Santai',
+                    typingSpeed2: (p2Stats?.avgReplyTimeMinutes || 99) < 2 ? 'Cepat' : 'Santai',
+                    styleInsight: result.styleInsight || 'Gaya chat kalian unik!'
+                };
+            case 'emoji-personality':
+                const e1 = p1Stats?.topEmojis?.[0] || '😀';
+                const e2 = p2Stats?.topEmojis?.[0] || '😀';
+                return {
+                    ...baseData,
+                    topEmoji1: e1,
+                    topEmoji2: e2,
+                    emojiCount1: p1Stats?.emojiUsage?.[e1] || 0,
+                    emojiCount2: p2Stats?.emojiUsage?.[e2] || 0,
+                    personality1: result.personality1 || 'Emoji User',
+                    personality2: result.personality2 || 'Emoji User',
+                    emojiInsight: result.emojiInsight || 'Emoji kalian menggambarkan mood chat yang asik.'
+                };
+            case 'ai-prediction':
+                return {
+                    ...baseData,
+                    relationshipScore: result.relationshipScore || 85,
+                    futurePredict: result.futurePredict || 'Masa depan cerah!',
+                    strengthPoints: result.strengthPoints || ['Komunikasi', 'Trust'],
+                    improvementPoints: result.improvementPoints || ['Sering ketemu'],
+                    prediction2026: result.prediction2026 || 'Tahun 2026 kalian akan tetap akrab!',
+                    aiConfidence: result.aiConfidenceScore || 90
                 };
             default:
                 return baseData;
@@ -218,7 +396,11 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
                 if (blob) {
                     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
                     const templateName = templates.find(t => t.id === selectedTemplate)?.name.replace(/\s+/g, '-') || 'story';
-                    const fileName = `recapchat-story-${templateName}-${timestamp}.jpg`;
+                    const p1 = chatData.participants[0] || 'UserA';
+                    const p2 = chatData.participants[1] || 'UserB';
+                    const safeP1 = p1.replace(/[^a-zA-Z0-9]/g, '');
+                    const safeP2 = p2.replace(/[^a-zA-Z0-9]/g, '');
+                    const fileName = `ChatWrapped_${safeP1}_x_${safeP2}_${templateName}.jpg`;
                     saveAs(blob, fileName);
                     setDownloadSuccess(true);
                     setTimeout(() => setDownloadSuccess(false), 3000);

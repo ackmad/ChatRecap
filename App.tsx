@@ -9,6 +9,7 @@ import { AppState, ChatData, AnalysisResult, ChatMessage, Message, RelationshipT
 import { Layout } from './components/Layout';
 import { Button } from './components/Button';
 import { AdvancedStoryGenerator } from './components/AdvancedStoryGenerator';
+import { PDFGenerator } from './components/PDFGenerator';
 import { ChatSession } from "@google/generative-ai";
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -1598,10 +1599,11 @@ const App: React.FC = () => {
                 <div className="absolute top-4 right-4 z-50"><ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} /></div>
 
                 {showStory && <StoryViewer analysis={analysis} onClose={() => setShowStory(false)} />}
-                {showPDFGenerator && <PDFGeneratorModal analysis={analysis} chatData={chatData} onClose={() => setShowPDFGenerator(false)} />}
+                {showPDFGenerator && <PDFGenerator chatData={chatData} analysis={analysis} onClose={() => setShowPDFGenerator(false)} />}
                 {showStoryGenerator && (
                     <AdvancedStoryGenerator
                         analysisResult={analysis}
+                        chatData={chatData!}
                         onBack={() => setShowStoryGenerator(false)}
                         isDarkMode={isDarkMode}
                     />

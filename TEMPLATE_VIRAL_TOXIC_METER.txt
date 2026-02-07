@@ -1,0 +1,226 @@
+// TEMPLATE VIRAL FUNCTIONS - ADD THESE TO StoryTemplateNew.tsx
+
+// 1. TOXIC METER TEMPLATE
+const renderToxicMeterTemplate = () => {
+    const name1 = privacyMode?.hideNames ? '***' : (data.participant1 || 'Elfan');
+    const name2 = privacyMode?.hideNames ? '***' : (data.participant2 || 'Savira');
+    const relationship = data.relationshipType || 'Sahabat';
+    const toxicScore = data.toxicScore || 45;
+    const toxicLevel = data.toxicLevel || 'Chaos Lucu';
+    const insight = data.toxicInsight || 'Kalian bukan toxic, kalian cuma terlalu jujur 😭';
+
+    return (
+        <div style={containerStyle}>
+            <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '700px',
+                height: '700px',
+                borderRadius: '50%',
+                background: '#FF6B6B',
+                opacity: 0.08,
+                filter: 'blur(120px)',
+                zIndex: 0
+            }} />
+
+            {/* Header */}
+            <div style={{
+                height: '280px',
+                padding: '100px 90px 0',
+                position: 'relative',
+                zIndex: 1
+            }}>
+                <div style={{ marginBottom: '12px' }}>
+                    <span style={{
+                        fontSize: '36px',
+                        fontWeight: '900',
+                        color: currentTheme.text,
+                        letterSpacing: '-1px'
+                    }}>
+                        {name1} × {name2}
+                    </span>
+                </div>
+                <div style={{ marginBottom: '12px' }}>
+                    <span style={{
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        color: currentTheme.textLight,
+                        textTransform: 'uppercase',
+                        letterSpacing: '1px'
+                    }}>
+                        {relationship}
+                    </span>
+                </div>
+                <div style={{ marginBottom: '20px' }}>
+                    <span style={{
+                        fontSize: '16px',
+                        fontWeight: '600',
+                        color: currentTheme.primary,
+                        textTransform: 'uppercase',
+                        letterSpacing: '2px'
+                    }}>
+                        Chat Wrapped 2026
+                    </span>
+                </div>
+                <h1 style={{
+                    fontSize: '60px',
+                    fontWeight: '900',
+                    color: currentTheme.text,
+                    lineHeight: '1.1',
+                    margin: '0',
+                    letterSpacing: '-2px'
+                }}>
+                    Toxic Level<br />Meter
+                </h1>
+            </div>
+
+            {/* Content */}
+            <div style={{
+                height: '1240px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                padding: '0 90px',
+                position: 'relative',
+                zIndex: 1
+            }}>
+                <div style={{ fontSize: '100px', marginBottom: '30px', lineHeight: '1' }}>
+                    🔥
+                </div>
+
+                {/* Toxic Score */}
+                <div style={{
+                    fontSize: '160px',
+                    fontWeight: '900',
+                    background: 'linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    marginBottom: '20px',
+                    lineHeight: '1'
+                }}>
+                    {toxicScore}%
+                </div>
+
+                {/* Level Label */}
+                <h2 style={{
+                    fontSize: '44px',
+                    fontWeight: '800',
+                    color: currentTheme.text,
+                    marginBottom: '20px',
+                    margin: '0 0 20px 0',
+                    lineHeight: '1.2'
+                }}>
+                    {toxicLevel}
+                </h2>
+
+                {/* AI Insight */}
+                <div style={{
+                    background: currentTheme.card,
+                    padding: '24px 32px',
+                    borderRadius: '20px',
+                    marginTop: '30px',
+                    maxWidth: '750px',
+                    backdropFilter: 'blur(20px)',
+                    border: `2px solid ${currentTheme.primary}20`
+                }}>
+                    <p style={{
+                        fontSize: '18px',
+                        color: currentTheme.textLight,
+                        textAlign: 'center',
+                        lineHeight: '1.6',
+                        margin: '0 0 12px 0',
+                        fontWeight: '600'
+                    }}>
+                        💡 Menurut AI
+                    </p>
+                    <p style={{
+                        fontSize: '17px',
+                        color: currentTheme.textLight,
+                        textAlign: 'center',
+                        lineHeight: '1.6',
+                        margin: '0'
+                    }}>
+                        "{insight}"
+                    </p>
+                </div>
+
+                {/* Evidence Examples */}
+                <div style={{
+                    marginTop: '35px',
+                    width: '100%',
+                    maxWidth: '750px'
+                }}>
+                    {data.toxicExamples?.slice(0, 3).map((example, i) => (
+                        <div key={i} style={{
+                            background: currentTheme.card,
+                            padding: '16px 20px',
+                            borderRadius: '14px',
+                            marginBottom: '10px',
+                            backdropFilter: 'blur(20px)',
+                            borderLeft: `3px solid ${currentTheme.primary}`
+                        }}>
+                            <p style={{
+                                fontSize: '15px',
+                                color: currentTheme.text,
+                                margin: '0 0 8px 0',
+                                lineHeight: '1.5'
+                            }}>
+                                "{example.text}"
+                            </p>
+                            <span style={{
+                                fontSize: '12px',
+                                color: currentTheme.textLight,
+                                fontWeight: '600'
+                            }}>
+                                {example.time}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{
+                height: '200px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0 90px 100px',
+                position: 'relative',
+                zIndex: 1
+            }}>
+                <div style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '20px 40px',
+                    background: currentTheme.card,
+                    borderRadius: '100px',
+                    backdropFilter: 'blur(20px)'
+                }}>
+                    <Sparkles size={24} color={currentTheme.primary} />
+                    <span style={{
+                        fontSize: '22px',
+                        fontWeight: '700',
+                        color: currentTheme.text
+                    }}>
+                        RecapChat.App
+                    </span>
+                    <span style={{
+                        fontSize: '13px',
+                        color: currentTheme.textLight,
+                        marginLeft: '8px',
+                        fontWeight: '600'
+                    }}>
+                        ✓ AI Verified
+                    </span>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Copy this function and paste it before "return renderTemplate();" in StoryTemplateNew.tsx

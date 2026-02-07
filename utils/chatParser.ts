@@ -81,8 +81,7 @@ export const parseWhatsAppChat = (text: string): ChatData => {
   const sortedMessages = messages.sort((a, b) => a.date.getTime() - b.date.getTime());
   const participantList = Array.from(participants);
 
-  // --- Advanced Stats Calculation ---
-
+  // --- Advanced Stats Initialization ---
   const participantStats: Record<string, ParticipantStats> = {};
   participantList.forEach(p => {
     participantStats[p] = {
@@ -91,83 +90,126 @@ export const parseWhatsAppChat = (text: string): ChatData => {
       wordCount: 0,
       averageLength: 0,
       avgReplyTimeMinutes: 0,
-      initiationCount: 0
+      initiationCount: 0,
+      emojiUsage: {},
+      vocabulary: {},
+      topEmojis: [],
+      topWords: [],
+      ghostingCount: 0,
+      longestGhostingDurationMinutes: 0,
+      fastestReplyMinutes: 999999,
+      activeHours: new Array(24).fill(0),
+      typingStyle: 'balanced'
     };
   });
 
   const hourlyCount = new Array(24).fill(0);
   const dailyCount: Record<string, number> = {};
-  const dailyBreakdown: Record<string, Record<string, number>> = {}; // New: Breakdown per day
+  const dailyBreakdown: Record<string, Record<string, number>> = {};
   const replyTimes: Record<string, number[]> = {};
   const silencePeriods: SilencePeriod[] = [];
 
   let lastMessage: Message | null = null;
-  const SILENCE_THRESHOLD_DAYS = 4; // Adjusted to capture shorter significant gaps
+  const SILENCE_THRESHOLD_HOURS = 24 * 3; // 3 days for ghosting
+
+  // Basic Stop Words (Indonesian & English mix)
+  const STOP_WORDS = new Set(['yang', 'dan', 'di', 'ke', 'dari', 'ini', 'itu', 'aku', 'kamu', 'dia', 'kita', 'mereka', 'apa', 'siapa', 'kapan', 'dimana', 'kenapa', 'bagaimana', 'ya', 'tidak', 'bukan', 'jangan', 'sudah', 'telah', 'sedang', 'akan', 'bisa', 'boleh', 'harus', 'mau', 'ingin', 'tapi', 'namun', 'jika', 'kalau', 'the', 'and', 'to', 'of', 'a', 'in', 'is', 'it', 'you', 'that', 'he', 'she', 'was', 'for', 'on', 'are', 'with', 'as', 'I', 'his', 'they', 'be', 'at', 'one', 'have', 'this', 'from', 'or', 'had', 'by', 'not', 'word', 'but', 'what', 'some', 'we', 'can', 'out', 'other', 'were', 'all', 'there', 'when', 'up', 'use', 'your', 'how', 'said', 'an', 'each', 'she']);
+
+  // Emoji Regex
+  const EMOJI_REGEX = /[\u{1F300}-\u{1F9FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu;
 
   sortedMessages.forEach((msg) => {
+    const stats = participantStats[msg.sender];
+    if (!stats) return;
+
     // 1. Basic Counts
-    if (participantStats[msg.sender]) {
-      participantStats[msg.sender].messageCount++;
-      participantStats[msg.sender].wordCount += msg.content.split(/\s+/).length;
+    stats.messageCount++;
+    const words = msg.content.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 2);
+    stats.wordCount += words.length;
+
+    // 2. Vocabulary & Typing Style
+    words.forEach(w => {
+      if (!STOP_WORDS.has(w)) {
+        stats.vocabulary![w] = (stats.vocabulary![w] || 0) + 1;
+      }
+    });
+
+    // 3. Emojis
+    const emojis = msg.content.match(EMOJI_REGEX);
+    if (emojis) {
+      emojis.forEach(e => {
+        stats.emojiUsage![e] = (stats.emojiUsage![e] || 0) + 1;
+      });
     }
 
-    // 2. Hourly Distribution
-    hourlyCount[msg.date.getHours()]++;
+    // 4. Hourly Distribution (Global & Per User)
+    const hour = msg.date.getHours();
+    hourlyCount[hour]++;
+    stats.activeHours![hour]++;
 
-    // 3. Daily Distribution
+    // 5. Daily Distribution
     const dateKey = msg.date.toISOString().split('T')[0];
     dailyCount[dateKey] = (dailyCount[dateKey] || 0) + 1;
-
-    // Daily Breakdown Logic
-    if (!dailyBreakdown[dateKey]) {
-      dailyBreakdown[dateKey] = {};
-    }
+    if (!dailyBreakdown[dateKey]) dailyBreakdown[dateKey] = {};
     dailyBreakdown[dateKey][msg.sender] = (dailyBreakdown[dateKey][msg.sender] || 0) + 1;
 
-    // 4. Initiations, Reply Times & Silence Tracking
+    // 6. Reply Times & Ghosting
     if (lastMessage) {
       const timeDiffMs = msg.date.getTime() - lastMessage.date.getTime();
       const timeDiffMinutes = timeDiffMs / (1000 * 60);
-      const timeDiffDays = timeDiffMs / (1000 * 60 * 60 * 24);
 
-      // Silence Detection
-      if (timeDiffDays >= SILENCE_THRESHOLD_DAYS) {
-        silencePeriods.push({
-          startDate: lastMessage.date,
-          endDate: msg.date,
-          durationDays: Math.round(timeDiffDays),
-          breaker: msg.sender
-        });
-      }
-
-      // Initiation: If > 6 hours gap, consider it a new conversation start
-      if (timeDiffMinutes > 360) { // 6 hours
-        if (participantStats[msg.sender]) {
-          participantStats[msg.sender].initiationCount++;
-        }
-      }
-      // Reply Time: If different sender and time < 6 hours
-      else if (msg.sender !== lastMessage.sender) {
+      // If sender changed, it's a reply
+      if (msg.sender !== lastMessage.sender) {
         if (!replyTimes[msg.sender]) replyTimes[msg.sender] = [];
         replyTimes[msg.sender].push(timeDiffMinutes);
-      }
-    } else {
-      // First message is an initiation
-      if (participantStats[msg.sender]) {
-        participantStats[msg.sender].initiationCount++;
+
+        // Track fastest
+        if (timeDiffMinutes < (stats.fastestReplyMinutes || 999999)) {
+          stats.fastestReplyMinutes = timeDiffMinutes;
+        }
+
+        // Ghosting Check (Deep Silence)
+        if (timeDiffMinutes > (SILENCE_THRESHOLD_HOURS * 60)) {
+          // The PREVIOUS sender was "Ghosted" by the CURRENT sender (who took too long to reply)
+          // OR the NEW sender broke the silence after dragging their feet?
+          // Usually: A sent msg. B took 3 days to reply. B ghosted A.
+          stats.ghostingCount = (stats.ghostingCount || 0) + 1;
+          if (timeDiffMinutes > (stats.longestGhostingDurationMinutes || 0)) {
+            stats.longestGhostingDurationMinutes = timeDiffMinutes;
+          }
+        }
       }
     }
-
     lastMessage = msg;
   });
 
   // Finalize Stats
   participantList.forEach(p => {
+    const stats = participantStats[p];
+
+    // Avg Reply Time
     const times = replyTimes[p] || [];
     const sum = times.reduce((a, b) => a + b, 0);
-    participantStats[p].avgReplyTimeMinutes = times.length ? Math.round(sum / times.length) : 0;
+    stats.avgReplyTimeMinutes = times.length ? Math.round(sum / times.length) : 0;
+
+    // Average Message Length
+    stats.averageLength = stats.messageCount ? Math.round(stats.wordCount / stats.messageCount) : 0;
+    stats.typingStyle = stats.averageLength < 5 ? 'short' : (stats.averageLength > 20 ? 'long' : 'balanced');
+
+    // Sort Top Emojis
+    stats.topEmojis = Object.entries(stats.emojiUsage!)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(e => e[0]); // Just the emoji chars
+
+    // Sort Top Words
+    stats.topWords = Object.entries(stats.vocabulary!)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(w => w[0]);
   });
 
+  // ... (Balance Score and finding Busiest day logic remains similar)
   // Calculate Balance Score (0-100)
   let balanceScore = 50;
   if (participantList.length === 2 && sortedMessages.length > 0) {
@@ -175,51 +217,46 @@ export const parseWhatsAppChat = (text: string): ChatData => {
     const p2 = participantList[1];
     const count1 = participantStats[p1]?.messageCount || 0;
     const count2 = participantStats[p2]?.messageCount || 0;
+    // Simple ratio
     const total = count1 + count2;
-
     if (total > 0) {
-      const ratio = Math.min(count1, count2) / Math.max(count1, count2);
-      balanceScore = Math.round(ratio * 100);
+      const min = Math.min(count1, count2);
+      const max = Math.max(count1, count2);
+      balanceScore = Math.round((min / max) * 100);
     }
   }
 
-  // Find busiest
+  // Find busiest day
   const sortedDays = Object.entries(dailyCount).sort((a, b) => b[1] - a[1]);
   const busiestDay = sortedDays.length > 0 ? { date: sortedDays[0][0], count: sortedDays[0][1] } : { date: '', count: 0 };
-
   const busiestHour = hourlyCount.indexOf(Math.max(...hourlyCount));
 
   // Format Data for Charts
   const hourlyDistribution = hourlyCount.map((count, hour) => ({ hour, count }));
-  const dailyDistributionArray: DailyStats[] = Object.keys(dailyCount).sort().map(date => ({
+  const dailyDistributionArray = Object.keys(dailyCount).sort().map(date => ({
     date,
     count: dailyCount[date],
     breakdown: dailyBreakdown[date] || {}
   }));
 
-  // Duration & Averages
+  // Duration String Logic (Reused)
   let durationString = "0 hari";
   let activeDays = Object.keys(dailyCount).length;
   let avgMessagesPerDay = 0;
-
+  // ... (keeping existing duration logic if needed, or simplified)
   if (sortedMessages.length > 1) {
     const start = sortedMessages[0].date;
     const end = sortedMessages[sortedMessages.length - 1].date;
     const diffTime = Math.abs(end.getTime() - start.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays > 0) {
-      avgMessagesPerDay = Math.round(sortedMessages.length / diffDays);
-    }
+    if (diffDays > 0) avgMessagesPerDay = Math.round(sortedMessages.length / diffDays);
 
     if (diffDays > 365) {
-      const years = Math.floor(diffDays / 365);
-      const remainingDays = diffDays % 365;
-      const months = Math.floor(remainingDays / 30);
-      durationString = `${years} tahun ${months > 0 ? `${months} bulan` : ''}`;
+      const y = Math.floor(diffDays / 365);
+      const m = Math.floor((diffDays % 365) / 30);
+      durationString = `${y} tahun ${m > 0 ? `${m} bulan` : ''}`;
     } else if (diffDays > 30) {
-      const months = Math.floor(diffDays / 30);
-      durationString = `${months} bulan ${diffDays % 30} hari`;
+      durationString = `${Math.floor(diffDays / 30)} bulan ${diffDays % 30} hari`;
     } else {
       durationString = `${diffDays} hari`;
     }

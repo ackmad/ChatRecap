@@ -47,16 +47,7 @@ export interface ChatData {
   };
   durationString: string;
   messages: Message[];
-  participantStats: {
-    [key: string]: {
-      messageCount: number;
-      wordCount: number;
-      averageLength: number;
-      name?: string;
-      avgReplyTimeMinutes?: number;
-      initiationCount?: number;
-    };
-  };
+  participantStats: Record<string, ParticipantStats>;
   dailyDistribution: { date: string; count: number; breakdown: any }[];
   hourlyDistribution: { hour: number; count: number }[];
   balanceScore: number; // 0-100 (50 is balanced)
@@ -144,6 +135,88 @@ export interface AnalysisResult {
     name: string;
     percentage: number;
   }[];
+
+  // Viral Template Data
+  participants?: { name: string; role?: string }[];
+
+  // Toxic Meter
+  toxicScore?: number;
+  toxicLevel?: string;
+  toxicExamples?: { text: string; time: string }[];
+  toxicInsight?: string;
+
+  // Reply Speed
+  avgReplyTime1?: string;
+  avgReplyTime2?: string;
+  fastestReply1?: string;
+  fastestReply2?: string;
+  replyBadge1?: string;
+  replyBadge2?: string;
+  activeHours1?: string[];
+  activeHours2?: string[];
+  replyInsight?: string;
+
+  // Ghosting
+  ghostingCount1?: number;
+  ghostingCount2?: number;
+  longestGhosting1?: string;
+  longestGhosting2?: string;
+  comebackMessage?: string;
+  ghostingKing?: string;
+  ghostingInsight?: string;
+
+  // Topic Ranking
+  topTopics?: { topic: string; count: number; emoji: string }[];
+  topicInsight?: string;
+  mostDebatedTopic?: string;
+
+  // Quote of Year
+  bestQuote?: string;
+  quoteAuthor?: string;
+  quoteDate?: string;
+  quoteContext?: string;
+  runnerUpQuotes?: { text: string; author: string }[];
+
+  // Care Meter
+  careScore1?: number;
+  careScore2?: number;
+  careExamples1?: { text: string; time: string }[];
+  careExamples2?: { text: string; time: string }[];
+  careWinner?: string;
+  careInsight?: string;
+
+  // Overthinking
+  overthinkingScore1?: number;
+  overthinkingScore2?: number;
+  overthinkingExamples?: { text: string; author: string }[];
+  overthinkingKing?: string;
+  overthinkingInsight?: string;
+
+  // Typing Style
+  typingStyle1?: string;
+  typingStyle2?: string;
+  avgMessageLength1?: number;
+  avgMessageLength2?: number;
+  typingSpeed1?: string;
+  typingSpeed2?: string;
+  styleInsight?: string;
+
+  // Emoji Personality
+  topEmoji1?: string;
+  topEmoji2?: string;
+  emojiCount1?: number;
+  emojiCount2?: number;
+  personality1?: string;
+  personality2?: string;
+  emojiInsight?: string;
+
+  // AI Prediction
+  relationshipScore?: number;
+  futurePredict?: string;
+  strengthPoints?: string[];
+  improvementPoints?: string[];
+  prediction2026?: string;
+  aiConfidenceScore?: number;
 }
 
 // Live Activity Types
@@ -169,6 +242,15 @@ export interface ParticipantStats {
   name?: string;
   avgReplyTimeMinutes?: number;
   initiationCount?: number;
+  emojiUsage?: Record<string, number>;
+  topEmojis?: string[];
+  vocabulary?: Record<string, number>; // Word frequency
+  topWords?: string[];
+  ghostingCount?: number;
+  longestGhostingDurationMinutes?: number;
+  fastestReplyMinutes?: number;
+  typingStyle?: 'short' | 'long' | 'balanced';
+  activeHours?: number[]; // Array of 24 integers
 }
 
 export interface SilencePeriod {

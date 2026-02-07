@@ -1,8 +1,6 @@
 export const GEMINI_MODEL_TEXT = 'gemini-3-flash-preview';
-// export const GEMINI_MODEL_TEXT = 'gemini-1.5-flash'; 
-// export const GEMINI_MODEL_TEXT = 'gemini-2.0-flash-exp'; 
 
-export const APP_VERSION = 'v.2.6.5';
+export const APP_VERSION = 'v.2.7.0';
 
 // Prompt Analisis: Langsung to the point minta JSON sesuai struktur Type di frontend
 export const SYSTEM_INSTRUCTION_ANALYSIS = `
@@ -50,7 +48,87 @@ Analisis harus objektif, tidak menghakimi, dan menggunakan bahasa Indonesia yang
      "description": "Gambaran gaya komunikasi mereka"
   },
   "reflection": "Satu paragraf pesan penutup yang bijak untuk kedua pihak.",
-  "aiConfidence": "high"
+  "aiConfidence": "high",
+
+  // --- VIRAL TEMPLATES DATA ---
+  "participants": [
+    { "name": "Nama User 1", "role": "Sender/Initiator" },
+    { "name": "Nama User 2", "role": "Receiver/Responder" }
+  ],
+  
+  // 1. Toxic Meter
+  "toxicScore": 0-100, // 0 = suci, 100 = toxic parah
+  "toxicLevel": "Low/Medium/High/Hazardous",
+  "toxicExamples": [
+    { "text": "Contoh chat toxic/kasar", "time": "Waktu" }
+  ],
+  "toxicInsight": "Insight lucu tentang seberapa toxic hubungan ini.",
+
+  // 2. Reply Speed & Ghosting
+  "avgReplyTime1": "misal: 5 menit",
+  "avgReplyTime2": "misal: 2 jam",
+  "fastestReply1": "misal: 3 detik",
+  "fastestReply2": "misal: 1 detik",
+  "replyBadge1": "Si Kilat/Si Ngaret",
+  "replyBadge2": "Si Kilat/Si Ngaret",
+  "ghostingCount1": 0,
+  "ghostingCount2": 0,
+  "longestGhosting1": "Durasi ghosting user 1 (misal 3 hari)",
+  "longestGhosting2": "Durasi ghosting user 2",
+  "ghostingKing": "Nama user yang paling sering ghosting",
+  "ghostingInsight": "Komentar lucu tentang kebiasaan balas chat mereka.",
+
+  // 3. Topic Ranking
+  "topTopics": [
+     { "topic": "Nama Topik", "count": 10, "emoji": "🍔" }
+  ],
+  "topicInsight": "Insight tentang apa yang paling sering mereka bahas.",
+  "mostDebatedTopic": "Topik yang paling panjang diskusinya.",
+
+  // 4. Quote of the Year
+  "bestQuote": "Chat paling iconic/lucu/memorable tahun ini",
+  "quoteAuthor": "Pengirim chat tersebut",
+  "quoteDate": "Tanggal chat",
+  "quoteContext": "Konteks singkat",
+  "runnerUpQuotes": [
+     { "text": "Chat runner up", "author": "Pengirim" }
+  ],
+
+  // 5. Care Meter
+  "careScore1": 0-100,
+  "careScore2": 0-100,
+  "careExamples1": [{ "text": "Contoh chat perhatian user 1", "time": "Waktu" }],
+  "careExamples2": [{ "text": "Contoh chat perhatian user 2", "time": "Waktu" }],
+  "careWinner": "Nama user yang lebih care",
+  "careInsight": "Analisis siapa yang bucin.",
+
+  // 6. Overthinking & Typing Style
+  "overthinkingScore1": 0-100,
+  "overthinkingScore2": 0-100,
+  "overthinkingExamples": [{ "text": "Chat panjang lebar/ragu-ragu", "author": "Pengirim" }],
+  "overthinkingKing": "Nama overthinker",
+  "overthinkingInsight": "Komentar soal kebiasaan overthinking.",
+  
+  "typingStyle1": "Singkat/Panjang/Formal/Alay",
+  "typingStyle2": "Singkat/Panjang/Formal/Alay",
+  "styleInsight": "Analisis kecocokan gaya chat.",
+
+  // 7. Emoji Personality
+  "topEmoji1": "Emoji favorit user 1",
+  "topEmoji2": "Emoji favorit user 2",
+  "emojiCount1": 123,
+  "emojiCount2": 456,
+  "personality1": "Deskripsi kepribadian user 1 berdasarkan emoji",
+  "personality2": "Deskripsi kepribadian user 2 berdasarkan emoji",
+  "emojiInsight": "Kecocokan personality mereka.",
+
+  // 8. AI Prediction
+  "relationshipScore": 0-100, // Kecocokan
+  "prediction2026": "Ramalan masa depan hubungan ini di tahun 2026",
+  "futurePredict": "Prediksi singkat",
+  "strengthPoints": ["Poin kuat 1", "Poin kuat 2"],
+  "improvementPoints": ["Saran 1", "Saran 2"],
+  "aiConfidenceScore": 85
 }
 `;
 
