@@ -1,5 +1,13 @@
-import { useEffect, useState, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { useEffect, useState } from 'react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getDatabase, 
+  ref, 
+  onValue, 
+  set, 
+  onDisconnect, 
+  serverTimestamp 
+} from 'firebase/database';
 
 // --- TYPES ---
 export type PageCategory = 'landing' | 'creating' | 'reading';
@@ -7,18 +15,42 @@ export type PageCategory = 'landing' | 'creating' | 'reading';
 export interface GlobalStats {
     landing: number;
     creating: number;
-    result: number; // mapped from 'reading' in server
+    result: number; // di UI pakai 'result', di logic kita hitung sebagai 'reading'
     total: number;
 }
 
-// --- CONFIG ---
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
+// --- FIREBASE CONFIGURATION ---
+const firebaseConfig = {
+  apiKey: "AIzaSyCxvaTFcEX-Cqi0Ilwupk50sbZpBPu9-pA",
+  authDomain: "chatrecap-35849.firebaseapp.com",
+  databaseURL: "https://chatrecap-35849-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "chatrecap-35849",
+  storageBucket: "chatrecap-35849.firebasestorage.app",
+  messagingSenderId: "802650323219",
+  appId: "1:802650323219:web:2a6a8b170c3b5a680202e6"
+};
+
+// Initialize Firebase (Hanya sekali di luar hook agar tidak re-init terus menerus)
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+// Helper: Generate Session ID Unik per Browser
+const getSessionId = () => {
+  let id = sessionStorage.getItem('visitor_session_id');
+  if (!id) {
+    // Buat ID acak sederhana
+    id = 'user_' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+    sessionStorage.setItem('visitor_session_id', id);
+  }
+  return id;
+};
 
 export const useRoomPresence = (
-    _roomId: string | null, // Deprecated but kept for signature compatibility
+    _roomId: string | null, // Deprecated: Disimpan biar gak error di file lain
     _userIdentity: any,      // Deprecated
     category: PageCategory = 'landing'
 ) => {
+    // State Statistik Global
     const [globalStats, setGlobalStats] = useState<GlobalStats>({
         landing: 0,
         creating: 0,
@@ -27,67 +59,83 @@ export const useRoomPresence = (
     });
 
     const [isConnected, setIsConnected] = useState(false);
-    const socketRef = useRef<Socket | null>(null);
 
-    // 1. Initialize Connection ONCE
     useEffect(() => {
-        // Prevent multiple connections if header re-renders
-        if (socketRef.current) return;
+        const userId = getSessionId();
+        
+        // 1. Referensi Database
+        const myStatusRef = ref(db, `status/${userId}`);
+        const allStatusRef = ref(db, 'status');
+        const connectedRef = ref(db, '.info/connected');
 
-        const socket = io(SOCKET_URL, {
-            transports: ['websocket'],
-            reconnectionAttempts: 5,
-            reconnectionDelay: 1000,
+        // 2. Cek Koneksi (Online/Offline)
+        const unsubscribeConnection = onValue(connectedRef, (snap) => {
+            if (snap.val() === true) {
+                setIsConnected(true);
+                
+                // Saat konek, simpan data diri
+                set(myStatusRef, {
+                    page: category,
+                    last_seen: serverTimestamp(),
+                    device: /Mobi|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop'
+                });
+
+                // PENTING: Hapus data diri otomatis kalau internet putus/tab tutup
+                onDisconnect(myStatusRef).remove();
+            } else {
+                setIsConnected(false);
+            }
         });
 
-        socketRef.current = socket;
-
-        socket.on('connect', () => {
-            console.log('✅ Connected to Analytics Server:', socket.id);
-            setIsConnected(true);
-            // Emit initial page view upon connection
-            socket.emit('page_view', category);
-        });
-
-        socket.on('disconnect', () => {
-            console.log('❌ Disconnected from Analytics Server');
-            setIsConnected(false);
-        });
-
-        // Listen for global updates
-        socket.on('activity_update', (stats: any) => {
-            // Map server 'reading' to client 'result' key if needed, or just use as is
-            setGlobalStats({
-                landing: stats.landing || 0,
-                creating: stats.creating || 0,
-                result: stats.reading || 0, // Server sends 'reading', Client UI expects 'result'
-                total: stats.total || 0
+        // 3. Update Status Halaman (Jika kategori berubah)
+        if (isConnected) {
+            set(myStatusRef, {
+                page: category,
+                last_seen: serverTimestamp(),
+                device: /Mobi|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop'
             });
+        }
+
+        // 4. Dengarkan Perubahan Data Global (Realtime Counter)
+        const unsubscribeStats = onValue(allStatusRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                let l = 0, c = 0, r = 0;
+
+                // Loop semua user aktif dan hitung
+                Object.values(data).forEach((user: any) => {
+                    if (user.page === 'landing') l++;
+                    else if (user.page === 'creating') c++;
+                    else if (user.page === 'reading') r++; // 'reading' dianggap 'result'
+                });
+
+                setGlobalStats({
+                    landing: l,
+                    creating: c,
+                    result: r,
+                    total: l + c + r
+                });
+            } else {
+                // Kalau database kosong (0 user)
+                setGlobalStats({ landing: 0, creating: 0, result: 0, total: 0 });
+            }
         });
 
+        // Cleanup saat component unmount
         return () => {
-            // Optional: Don't disconnect on unmount to keep connection alive during nav? 
-            // But for safer cleanup:
-            socket.disconnect();
-            socketRef.current = null;
+            unsubscribeConnection();
+            unsubscribeStats();
+            // Kita biarkan onDisconnect yang menangani penghapusan data di server
         };
-    }, []);
 
-    // 2. Handle Page Navigation (Category Change)
-    useEffect(() => {
-        if (socketRef.current && isConnected) {
-            console.log('📍 Page View:', category);
-            socketRef.current.emit('page_view', category);
-        }
-    }, [category, isConnected]);
+    }, [category]); // Jalankan ulang kalau user pindah halaman (kategori berubah)
 
-    // Return structure compatible with previous hook where reasonable
+    // Return structure yang kompatibel dengan kode UI Anda sebelumnya
     return {
         isConnected,
         presenceState: { roomId: 'global', onlineCount: globalStats.total, users: [] }, // Dummy compliance
         globalStats,
-        updateMyStatus: (_status?: string) => { }, // No-op
-        socket: socketRef.current
+        updateMyStatus: (_status?: string) => { }, // No-op (tidak perlu lagi)
+        socket: null // Socket sudah diganti Firebase
     };
 };
-

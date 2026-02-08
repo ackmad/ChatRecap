@@ -2029,6 +2029,7 @@ const App: React.FC = () => {
                     {/* --- BAGIAN 3: DETAIL HUBUNGAN (Styles & Patterns) --- */}
                     <section className="grid md:grid-cols-2 gap-6">
                         {/* Silence & Gaps */}
+                        {/* Silence & Gaps */}
                         <motion.div initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} className={`bg-white/60 dark:bg-stone-800/60 p-6 rounded-3xl border ${theme.borderAccent}`}>
                             <div className="flex items-center gap-3 mb-6">
                                 <Hourglass className="text-blue-400" />
@@ -2037,54 +2038,92 @@ const App: React.FC = () => {
                             {chatData.silencePeriods.length > 0 ? (
                                 <div className="space-y-4">
                                     {chatData.silencePeriods.slice(0, 3).map((silence, i) => (
-                                        <div key={i} className="flex items-center gap-4 p-3 bg-blue-50/50 dark:bg-blue-900/10 rounded-2xl">
-                                            <div className="font-bold text-xl text-blue-500 w-12 text-center">{silence.durationDays}h</div>
-                                            <div className="flex-1 text-xs">
-                                                <div className="text-stone-600 dark:text-stone-300">Hening selama {silence.durationDays} hari</div>
-                                                <div className="opacity-50 text-stone-500">{silence.startDate.toLocaleDateString()}</div>
+                                        <div key={i} className="flex items-center gap-4 p-4 bg-white dark:bg-stone-900 rounded-2xl border border-stone-100 dark:border-stone-700 shadow-sm">
+                                            <div className="font-bold text-2xl text-blue-500 w-16 text-center leading-none">
+                                                {silence.durationDays}<span className="text-xs block font-normal text-stone-400">hari</span>
                                             </div>
-                                            <div className="text-[10px] text-right">
-                                                <div className="opacity-50 text-stone-500">Comeback:</div>
-                                                <div className="font-bold text-blue-600 dark:text-blue-400">{silence.breaker}</div>
+                                            <div className="flex-1 text-xs space-y-1">
+                                                <div className="text-stone-700 dark:text-stone-300 font-medium">Off dari {silence.startDate.toLocaleDateString("id-ID", { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                                                <div className="flex items-center gap-1 text-stone-500">
+                                                    <ArrowRight size={10} />
+                                                    <span>Sampai {silence.endDate.toLocaleDateString("id-ID", { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                                </div>
+                                            </div>
+                                            <div className="text-[10px] text-right bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-lg">
+                                                <div className="opacity-60 text-stone-500 mb-0.5">Chat lagi oleh:</div>
+                                                <div className="font-bold text-blue-600 dark:text-blue-400 truncate max-w-[60px]">{silence.breaker}</div>
                                             </div>
                                         </div>
                                     ))}
+                                    {chatData.silencePeriods.length > 3 && (
+                                        <p className="text-center text-xs text-stone-400 italic">...dan {chatData.silencePeriods.length - 3} jeda lainnya.</p>
+                                    )}
                                 </div>
                             ) : (
-                                <p className="text-sm text-center py-8 opacity-60 text-stone-500">Tidak ada jeda panjang yang signifikan.</p>
+                                <div className="flex flex-col items-center justify-center py-10 opacity-60 text-center">
+                                    <Clock size={40} className="text-stone-300 dark:text-stone-600 mb-4" />
+                                    <p className="text-sm font-medium text-stone-600 dark:text-stone-400">Tidak ada jeda panjang yang signifikan.</p>
+                                    <p className="text-xs text-stone-400 mt-1">Kalian ngobrol terus hampir setiap hari!</p>
+                                </div>
                             )}
                         </motion.div>
 
                         {/* Balance Meter */}
-                        <motion.div initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} className={`bg-white/60 dark:bg-stone-800/60 p-6 rounded-3xl border ${theme.borderAccent} flex flex-col justify-center`}>
+                        {/* Balance Meter - Improved UX */}
+                        <motion.div initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} className={`bg-white/60 dark:bg-stone-800/60 p-6 rounded-3xl border ${theme.borderAccent} flex flex-col`}>
                             <div className="flex items-center gap-3 mb-2">
                                 <Scale className="text-green-400" />
                                 <h3 className="text-lg font-bold text-txt-main dark:text-stone-200">{theme.labels.balance}</h3>
                             </div>
-                            <p className="text-xs text-txt-sub dark:text-stone-500 mb-8">Siapa yang lebih sering mengirim pesan?</p>
+                            <p className="text-xs text-txt-sub dark:text-stone-500 mb-6">Siapa yang lebih dominan dalam percakapan?</p>
 
-                            <div className="relative mb-6 px-4">
-                                <div className="h-4 bg-stone-100 dark:bg-stone-700 rounded-full w-full relative overflow-hidden">
-                                    <div className={`absolute inset-0 bg-gradient-to-r ${theme.gradient} opacity-50`}></div>
+                            <div className="space-y-6 flex-1 flex flex-col justify-center">
+                                {/* Percentage Display */}
+                                <div className="flex justify-between items-end px-2">
+                                    <div className="text-left">
+                                        <div className="text-2xl font-bold text-txt-main dark:text-stone-100">{100 - chatData.balanceScore}%</div>
+                                        <div className="text-xs font-bold text-stone-500 uppercase tracking-wider truncate max-w-[100px]">{chatData.participants[0]}</div>
+                                    </div>
+                                    <div className="text-center pb-1">
+                                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border ${Math.abs(50 - chatData.balanceScore) < 10
+                                            ? "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
+                                            : "bg-stone-100 text-stone-600 border-stone-200 dark:bg-stone-700 dark:text-stone-300 dark:border-stone-600"
+                                            }`}>
+                                            {Math.abs(50 - chatData.balanceScore) < 10 ? "Seimbang" : (chatData.balanceScore > 50 ? `${chatData.participants[1]} Dominan` : `${chatData.participants[0]} Dominan`)}
+                                        </span>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-2xl font-bold text-txt-main dark:text-stone-100">{chatData.balanceScore}%</div>
+                                        <div className="text-xs font-bold text-stone-500 uppercase tracking-wider truncate max-w-[100px]">{chatData.participants[1]}</div>
+                                    </div>
                                 </div>
-                                {/* Marker */}
-                                <motion.div
-                                    initial={{ left: '50%' }}
-                                    whileInView={{ left: `${chatData.balanceScore}%` }}
-                                    transition={{ type: 'spring', stiffness: 50, delay: 0.2 }}
-                                    className="absolute -top-1 w-6 h-6 bg-white dark:bg-stone-200 border-2 border-stone-300 dark:border-stone-600 shadow-md rounded-full transform -translate-x-1/2 z-10"
-                                />
-                            </div>
-                            <div className="flex justify-between text-sm font-bold text-txt-main dark:text-stone-200 px-2">
-                                <span>{chatData.participants[0]}</span>
-                                <span>{chatData.participants[1]}</span>
-                            </div>
-                            <div className="flex justify-between text-xs text-txt-sub dark:text-stone-400 px-2 mt-1">
-                                <span>{chatData.participantStats[chatData.participants[0]]?.messageCount} pesan</span>
-                                <span>{chatData.participantStats[chatData.participants[1]]?.messageCount} pesan</span>
+
+                                {/* Slider Visual */}
+                                <div className="relative h-6 bg-stone-100 dark:bg-stone-700 rounded-full w-full overflow-hidden shadow-inner">
+                                    {/* Middle Marker Line */}
+                                    <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-stone-300 dark:bg-stone-600 z-0 transform -translate-x-1/2"></div>
+
+                                    {/* Gradient Bar */}
+                                    <div className={`absolute inset-y-0 left-0 bg-gradient-to-r ${theme.gradient} opacity-80 transition-all duration-1000 ease-out`} style={{ width: `${chatData.balanceScore}%` }}></div>
+
+                                    {/* Handle Marker */}
+                                    <motion.div
+                                        initial={{ left: '50%' }}
+                                        whileInView={{ left: `${chatData.balanceScore}%` }}
+                                        transition={{ type: "spring", stiffness: 60, damping: 15 }}
+                                        className="absolute top-0 bottom-0 w-1.5 bg-white shadow-[0_0_10px_rgba(0,0,0,0.2)] z-10 transform -translate-x-1/2"
+                                    ></motion.div>
+                                </div>
+
+                                {/* Message Counts */}
+                                <div className="flex justify-between text-xs text-txt-sub dark:text-stone-500 px-2 opacity-80">
+                                    <span>{chatData.participantStats[chatData.participants[0]]?.messageCount.toLocaleString()} pesan</span>
+                                    <span>{chatData.participantStats[chatData.participants[1]]?.messageCount.toLocaleString()} pesan</span>
+                                </div>
                             </div>
                         </motion.div>
                     </section>
+
 
                     {/* Communication Style Tags */}
                     <section className={`bg-white/60 dark:bg-stone-800/60 p-8 rounded-3xl border ${theme.borderAccent}`}>

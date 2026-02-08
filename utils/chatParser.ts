@@ -153,10 +153,25 @@ export const parseWhatsAppChat = (text: string): ChatData => {
     if (!dailyBreakdown[dateKey]) dailyBreakdown[dateKey] = {};
     dailyBreakdown[dateKey][msg.sender] = (dailyBreakdown[dateKey][msg.sender] || 0) + 1;
 
+    // ... (Previous code)
+
     // 6. Reply Times & Ghosting
     if (lastMessage) {
       const timeDiffMs = msg.date.getTime() - lastMessage.date.getTime();
       const timeDiffMinutes = timeDiffMs / (1000 * 60);
+
+      // Detect Silence Periods (Gap > 24 hours)
+      // Jeda & Keheningan Logic
+      // Threshold: 24 hours
+      if (timeDiffMinutes > 24 * 60) {
+        const days = Math.floor(timeDiffMinutes / (60 * 24));
+        silencePeriods.push({
+          startDate: lastMessage.date,
+          endDate: msg.date,
+          durationDays: days,
+          breaker: msg.sender
+        });
+      }
 
       // If sender changed, it's a reply
       if (msg.sender !== lastMessage.sender) {
@@ -170,9 +185,7 @@ export const parseWhatsAppChat = (text: string): ChatData => {
 
         // Ghosting Check (Deep Silence)
         if (timeDiffMinutes > (SILENCE_THRESHOLD_HOURS * 60)) {
-          // The PREVIOUS sender was "Ghosted" by the CURRENT sender (who took too long to reply)
-          // OR the NEW sender broke the silence after dragging their feet?
-          // Usually: A sent msg. B took 3 days to reply. B ghosted A.
+          // ...
           stats.ghostingCount = (stats.ghostingCount || 0) + 1;
           if (timeDiffMinutes > (stats.longestGhostingDurationMinutes || 0)) {
             stats.longestGhostingDurationMinutes = timeDiffMinutes;
@@ -209,20 +222,22 @@ export const parseWhatsAppChat = (text: string): ChatData => {
       .map(w => w[0]);
   });
 
-  // ... (Balance Score and finding Busiest day logic remains similar)
-  // Calculate Balance Score (0-100)
+  // Sort Silence Periods by duration (longest first)
+  silencePeriods.sort((a, b) => b.durationDays - a.durationDays);
+
+  // Calculate Balance Score (Percentage of P2's contribution)
+  // 50 = Perfect Balance. 0 = All P1. 100 = All P2.
   let balanceScore = 50;
-  if (participantList.length === 2 && sortedMessages.length > 0) {
+  if (participantList.length === 2) {
     const p1 = participantList[0];
     const p2 = participantList[1];
     const count1 = participantStats[p1]?.messageCount || 0;
     const count2 = participantStats[p2]?.messageCount || 0;
-    // Simple ratio
     const total = count1 + count2;
+
     if (total > 0) {
-      const min = Math.min(count1, count2);
-      const max = Math.max(count1, count2);
-      balanceScore = Math.round((min / max) * 100);
+      // Calculate share of P2
+      balanceScore = Math.round((count2 / total) * 100);
     }
   }
 
@@ -243,7 +258,7 @@ export const parseWhatsAppChat = (text: string): ChatData => {
   let durationString = "0 hari";
   let activeDays = Object.keys(dailyCount).length;
   let avgMessagesPerDay = 0;
-  // ... (keeping existing duration logic if needed, or simplified)
+
   if (sortedMessages.length > 1) {
     const start = sortedMessages[0].date;
     const end = sortedMessages[sortedMessages.length - 1].date;
