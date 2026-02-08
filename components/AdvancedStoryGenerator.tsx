@@ -215,6 +215,39 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
         }
     ];
 
+    // Helper: Find the actual message that broke the longest silence
+    const findComebackMessage = () => {
+        if (!chatData.silencePeriods || chatData.silencePeriods.length === 0) return null;
+
+        // Sort by duration descending
+        const sortedSilences = [...chatData.silencePeriods].sort((a, b) => b.durationDays - a.durationDays);
+        const longestSilence = sortedSilences[0];
+
+        // Find the message that matches the endDate (within small margin or exact match)
+        // Since chatParser sets endDate = msg.date, precise match should work
+        const comebackMsg = chatData.messages.find(m => m.date.getTime() === longestSilence.endDate.getTime());
+
+        return comebackMsg ? comebackMsg.content.substring(0, 50) + (comebackMsg.content.length > 50 ? '...' : '') : null;
+    };
+
+    // Helper: Calculate late night messages (00:00 - 04:00)
+    const calculateLateNightStats = () => {
+        const lateNightHours = [0, 1, 2, 3, 4];
+        const count = chatData.hourlyDistribution
+            .filter(h => lateNightHours.includes(h.hour))
+            .reduce((sum, h) => sum + h.count, 0);
+        return count;
+    };
+
+    // Helper: Calculate peak moment from daily stats
+    const calculatePeakStats = () => {
+        if (!chatData.busiestDay) return null;
+        return {
+            date: chatData.busiestDay.date,
+            count: chatData.busiestDay.count
+        };
+    };
+
     // Generate template data from analysis result + Real Chat Stats
     const getTemplateData = (template: TemplateType) => {
         // Real Participants
@@ -256,18 +289,20 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
                     percentage2: total ? Math.round((p2Stats.messageCount / total) * 100) : 50
                 };
             case 'late-night':
+                const realLateNightCount = calculateLateNightStats();
                 return {
                     ...baseData,
                     lateNightHours: '00:00 - 04:00',
-                    lateNightMessages: result.lateNightMessages || 456, // Requires specific parser logic or AI
-                    mostLateNightDay: result.mostLateNightDay || 'Sabtu'
+                    lateNightMessages: result.lateNightMessages || realLateNightCount,
+                    mostLateNightDay: result.mostLateNightDay || 'Malam Minggu' // Hard to calc without complex parse
                 };
             case 'peak-moment':
+                const realPeak = calculatePeakStats();
                 return {
                     ...baseData,
-                    peakPeriod: result.peakPeriod || 'Unknown Period',
-                    peakMessages: result.peakMessages || 100,
-                    peakTopic: result.peakTopic || 'Life'
+                    peakPeriod: result.peakPeriod || (realPeak ? realPeak.date : 'Unknown Period'),
+                    peakMessages: result.peakMessages || (realPeak ? realPeak.count : 0),
+                    peakTopic: result.peakTopic || 'Obrolan Seru'
                 };
             case 'top-words':
                 return {
@@ -279,10 +314,11 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
             case 'toxic-meter':
                 return {
                     ...baseData,
-                    toxicScore: result.toxicScore || Math.floor(Math.random() * 30), // AI Only
-                    toxicLevel: result.toxicLevel || 'Aman Sentosa',
+                    // REMOVED RANDOMNESS
+                    toxicScore: result.toxicScore !== undefined ? result.toxicScore : 0,
+                    toxicLevel: result.toxicLevel || 'Aman Sentosa (Data tidak cukup)',
                     toxicExamples: result.toxicExamples || [],
-                    toxicInsight: result.toxicInsight || 'Kalian aman kok, gak toxic!'
+                    toxicInsight: result.toxicInsight || 'Chat kalian bersih dari toxic words.'
                 };
             case 'reply-speed':
                 return {
@@ -298,22 +334,24 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
                     replyInsight: result.replyInsight || 'Chat speed kalian seimbang!'
                 };
             case 'ghosting':
+                const realComeback = findComebackMessage();
                 return {
                     ...baseData,
                     ghostingCount1: p1Stats?.ghostingCount || 0,
                     ghostingCount2: p2Stats?.ghostingCount || 0,
                     longestGhosting1: `${p1Stats?.longestGhostingDurationMinutes ? Math.round(p1Stats.longestGhostingDurationMinutes / 60) : 0} jam`,
                     longestGhosting2: `${p2Stats?.longestGhostingDurationMinutes ? Math.round(p2Stats.longestGhostingDurationMinutes / 60) : 0} jam`,
-                    comebackMessage: result.comebackMessage || 'Maaf baru bales...',
+                    // Use real message if found, otherwise generic fallback
+                    comebackMessage: result.comebackMessage || realComeback || 'Maaf baru bales...',
                     ghostingKing: (p1Stats?.ghostingCount || 0) > (p2Stats?.ghostingCount || 0) ? p1 : p2,
                     ghostingInsight: result.ghostingInsight || 'Minim ghosting, good job!'
                 };
             case 'topic-ranking':
                 return {
                     ...baseData,
-                    topTopics: result.topTopics || [], // AI Generated
+                    topTopics: result.topTopics || [], // AI Generated Only
                     topicInsight: result.topicInsight || 'Topik kalian variatif banget!',
-                    mostDebatedTopic: result.mostDebatedTopic || 'Makan dimana'
+                    mostDebatedTopic: result.mostDebatedTopic || 'Topik Umum'
                 };
             case 'quote-year':
                 return {
@@ -327,20 +365,22 @@ export const AdvancedStoryGenerator: React.FC<AdvancedStoryGeneratorProps> = ({
             case 'care-meter':
                 return {
                     ...baseData,
+                    // Use neutral defaults if missing
                     careScore1: result.careScore1 || 50,
                     careScore2: result.careScore2 || 50,
                     careExamples1: result.careExamples1 || [],
                     careExamples2: result.careExamples2 || [],
-                    careWinner: result.careWinner || p1,
+                    careWinner: result.careWinner || 'Both',
                     careInsight: result.careInsight || 'Kalian berdua peduli satu sama lain.'
                 };
             case 'overthinking':
                 return {
                     ...baseData,
-                    overthinkingScore1: result.overthinkingScore1 || 20,
-                    overthinkingScore2: result.overthinkingScore2 || 20,
+                    // Use neutral defaults if missing
+                    overthinkingScore1: result.overthinkingScore1 || 10,
+                    overthinkingScore2: result.overthinkingScore2 || 10,
                     overthinkingExamples: result.overthinkingExamples || [],
-                    overthinkingKing: result.overthinkingKing || p2,
+                    overthinkingKing: result.overthinkingKing || 'None',
                     overthinkingInsight: result.overthinkingInsight || 'Santai aja, gak usah overthinking!'
                 };
             case 'typing-style':
