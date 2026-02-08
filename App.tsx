@@ -12,6 +12,7 @@ import { AppState, ChatData, AnalysisResult, ChatMessage, Message, RelationshipT
 import { Layout } from './components/Layout';
 import { Button } from './components/Button';
 import { AdvancedStoryGenerator } from './components/AdvancedStoryGenerator';
+import { StoryHighlight } from './components/StoryHighlight';
 import { PDFGenerator } from './components/PDFGenerator';
 import { ChatSession } from "@google/generative-ai";
 import html2canvas from 'html2canvas';
@@ -167,48 +168,25 @@ const CustomChartTooltip = ({ active, payload, label }: any) => {
     return null;
 };
 
-const TypewriterText = ({ text, onComplete, speed = 10 }: { text: string; onComplete?: () => void; speed?: number }) => {
-    const [displayedText, setDisplayedText] = useState('');
-    const indexRef = useRef(0);
-    const [isComplete, setIsComplete] = useState(false);
-
-    useEffect(() => {
-        if (indexRef.current >= text.length && text === displayedText) return;
-        if (text !== displayedText && indexRef.current === 0) {
-            setDisplayedText('');
-            setIsComplete(false);
-        }
-    }, [text]);
-
-    useEffect(() => {
-        if (isComplete) return;
-        const timer = setInterval(() => {
-            if (indexRef.current < text.length) {
-                setDisplayedText((prev) => prev + text.charAt(indexRef.current));
-                indexRef.current += 1;
-            } else {
-                clearInterval(timer);
-                setIsComplete(true);
-                if (onComplete) onComplete();
-            }
-        }, speed);
-        return () => clearInterval(timer);
-    }, [text, onComplete, isComplete, speed]);
-
-    return (
-        <div className={`markdown-content leading-relaxed ${!isComplete ? 'typing-cursor' : ''}`}>
-            <ReactMarkdown
-                components={{
-                    strong: ({ node, ...props }) => <span className="font-bold text-stone-900 dark:text-stone-100" {...props} />,
-                    em: ({ node, ...props }) => <span className="italic text-stone-700 dark:text-stone-300" {...props} />,
-                    p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
-                }}
-            >
-                {displayedText}
-            </ReactMarkdown>
-        </div>
-    );
-};
+// Markdown Message Component (Better Formatting)
+const MarkdownMessage = ({ text }: { text: string }) => (
+    <div className="markdown-content text-sm leading-relaxed space-y-2 break-words">
+        <ReactMarkdown
+            components={{
+                strong: ({ node, ...props }) => <span className="font-bold text-stone-900 dark:text-stone-100 bg-stone-100 dark:bg-stone-800 px-1 rounded-sm" {...props} />,
+                em: ({ node, ...props }) => <span className="italic text-stone-700 dark:text-stone-300" {...props} />,
+                ul: ({ node, ...props }) => <ul className="list-disc list-outside ml-4 space-y-1 my-2" {...props} />,
+                ol: ({ node, ...props }) => <ol className="list-decimal list-outside ml-4 space-y-1 my-2" {...props} />,
+                li: ({ node, ...props }) => <li className="pl-1" {...props} />,
+                p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+                blockquote: ({ node, ...props }) => <blockquote className="border-l-4 border-pastel-primary pl-3 italic text-stone-500 my-2 bg-stone-50 dark:bg-stone-800/50 py-1 pr-2 rounded-r" {...props} />,
+                code: ({ node, ...props }) => <code className="bg-stone-100 dark:bg-stone-800 px-1 py-0.5 rounded font-mono text-xs text-pink-500" {...props} />,
+            }}
+        >
+            {text}
+        </ReactMarkdown>
+    </div>
+);
 
 const Footer = ({ setAppState }: { setAppState: (state: AppState) => void }) => (
     <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} className="w-full mt-auto py-8 text-center text-xs text-txt-sub dark:text-stone-500 border-t border-stone-100 dark:border-stone-800 bg-white/50 dark:bg-stone-900/50 backdrop-blur-sm">
@@ -832,6 +810,7 @@ const App: React.FC = () => {
     const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
     const [errorDetails, setErrorDetails] = useState<{ userMsg: string, technicalMsg: string } | null>(null);
     const [showStory, setShowStory] = useState(false);
+    const [showHighlight, setShowHighlight] = useState(false);
 
     // --- REALTIME ANALYTICS SETUP ---
     // Calculate current page category for Analytics
@@ -981,7 +960,7 @@ const App: React.FC = () => {
 
     const onLoadingTransitionDone = () => {
         setAppState(AppState.INSIGHTS);
-        setShowStory(true);
+        setShowHighlight(true);
     };
 
     const handleSendMessage = async () => {
@@ -1890,7 +1869,7 @@ const App: React.FC = () => {
                 {/* Realtime Toast Notifications for Join/Leave */}
                 <PresenceToast />
 
-                {showStory && <StoryViewer analysis={analysis} onClose={() => setShowStory(false)} />}
+                {showHighlight && <StoryHighlight chatData={chatData} analysisResult={analysis} onComplete={() => setShowHighlight(false)} />}
                 {showPDFGenerator && <PDFGenerator chatData={chatData} analysis={analysis} onClose={() => { setShowPDFGenerator(false); updateMyStatus('reading'); }} theme={isDarkMode ? 'dark' : 'pastel'} />}
                 {showStoryGenerator && (
                     <AdvancedStoryGenerator
@@ -1948,7 +1927,7 @@ const App: React.FC = () => {
                                 <button onClick={() => setShowStoryGenerator(true)} className="inline-flex items-center gap-2 px-5 py-3 rounded-full font-bold shadow-md transition-all text-sm bg-white/80 dark:bg-stone-800/80 backdrop-blur-sm border border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-200 hover:bg-white hover:border-pastel-primary group">
                                     <Share2 size={16} className="group-hover:rotate-12 transition-transform" /> Share to Story
                                 </button>
-                                <button onClick={() => setShowStory(true)} className="inline-flex items-center gap-2 px-5 py-3 rounded-full font-bold shadow-md transition-all text-sm bg-white/80 dark:bg-stone-800/80 backdrop-blur-sm border border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-200 hover:bg-white hover:border-pastel-primary group">
+                                <button onClick={() => setShowHighlight(true)} className="inline-flex items-center gap-2 px-5 py-3 rounded-full font-bold shadow-md transition-all text-sm bg-white/80 dark:bg-stone-800/80 backdrop-blur-sm border border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-200 hover:bg-white hover:border-pastel-primary group">
                                     <Sparkles size={16} className="text-amber-400 group-hover:scale-125 transition-transform" /> Highlight
                                 </button>
                             </div>
@@ -2327,33 +2306,115 @@ const App: React.FC = () => {
     };
 
     const renderChat = () => (
-        <div className="flex flex-col h-screen bg-gradient-to-br from-pastel-bgEnd to-pastel-lavender dark:from-stone-950 dark:via-stone-900 dark:to-stone-950 font-sans transition-colors duration-300">
-            <div className="bg-white/80 dark:bg-stone-900/80 backdrop-blur-md border-b border-stone-100 dark:border-stone-800 p-4 flex justify-between items-center z-20">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-pastel-card dark:bg-stone-800 rounded-full flex items-center justify-center"><Sparkles size={20} className="text-stone-600 dark:text-stone-300" /></div>
-                    <div><h2 className="font-bold text-txt-main dark:text-stone-200">Ruang Refleksi</h2><p className="text-[10px] text-txt-sub dark:text-stone-400">Diskusi Objektif</p></div>
-                </div>
-                <div className="flex gap-2">
-                    <div className="flex bg-stone-100 dark:bg-stone-800 rounded-lg p-1"><button onClick={() => setChatFontSize(s => Math.max(12, s - 1))} className="p-1 text-stone-600 dark:text-stone-400"><Minus size={14} /></button><button onClick={() => setChatFontSize(s => Math.min(24, s + 1))} className="p-1 text-stone-600 dark:text-stone-400"><Plus size={14} /></button></div>
-                    <Button variant="secondary" onClick={() => setAppState(AppState.INSIGHTS)} className="!px-3 !py-2 text-xs !rounded-lg">Kembali</Button>
-                </div>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {conversation.map((msg, idx) => (
-                    <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div style={{ fontSize: `${chatFontSize}px` }} className={`max-w-[85%] p-4 rounded-2xl ${msg.role === 'user' ? 'bg-pastel-secondary dark:bg-stone-800 text-stone-800 dark:text-stone-100 rounded-br-none' : 'bg-white dark:bg-stone-900 text-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-800 rounded-bl-none shadow-sm'}`}>
-                            {msg.role === 'model' ? <TypewriterText text={msg.text} /> : msg.text}
+        <div className="flex flex-col h-screen bg-stone-50 dark:bg-stone-950 font-sans transition-colors duration-300 relative overflow-hidden">
+            {/* Background Pattern */}
+            <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, gray 1px, transparent 0)', backgroundSize: '20px 20px' }}></div>
+
+            {/* Header */}
+            <div className="bg-white/90 dark:bg-stone-900/90 backdrop-blur-xl border-b border-stone-100 dark:border-stone-800 p-4 flex justify-between items-center z-20 shadow-sm">
+                <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-gradient-to-br from-pastel-secondary to-pastel-primary dark:from-stone-800 dark:to-stone-700 rounded-full flex items-center justify-center shadow-inner">
+                        <Bot size={20} className="text-white" />
+                    </div>
+                    <div>
+                        <h2 className="font-bold text-lg text-stone-800 dark:text-stone-100 leading-tight">Ruang Refleksi</h2>
+                        <div className="flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                            <p className="text-[10px] font-medium text-stone-500 dark:text-stone-400 uppercase tracking-wider">ABIA Intelligence Online</p>
                         </div>
                     </div>
+                </div>
+                <div className="flex gap-3">
+                    <div className="flex items-center bg-stone-100 dark:bg-stone-800 rounded-full p-1 border border-stone-200 dark:border-stone-700">
+                        <button onClick={() => setChatFontSize(s => Math.max(12, s - 1))} className="w-8 h-8 flex items-center justify-center text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200 transition-colors"><Minus size={14} /></button>
+                        <span className="text-xs font-bold text-stone-400 w-4 text-center">{chatFontSize}</span>
+                        <button onClick={() => setChatFontSize(s => Math.min(24, s + 1))} className="w-8 h-8 flex items-center justify-center text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200 transition-colors"><Plus size={14} /></button>
+                    </div>
+                    <Button variant="secondary" onClick={() => setAppState(AppState.INSIGHTS)} className="!px-4 !py-2 text-xs !rounded-full shadow-sm">
+                        <ArrowLeft size={14} className="mr-2" /> Kembali
+                    </Button>
+                </div>
+            </div>
+
+            {/* Chat Area */}
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scrollbar-thin scrollbar-thumb-stone-200 dark:scrollbar-thumb-stone-800">
+                {/* Welcome Message if Empty */}
+                {conversation.length === 0 && (
+                    <div className="flex flex-col items-center justify-center h-full opacity-50 space-y-4">
+                        <MessageSquare size={48} className="text-stone-300 dark:text-stone-700" />
+                        <p className="text-stone-400 text-sm">Mulai percakapan dengan ABIA...</p>
+                    </div>
+                )}
+
+                {conversation.map((msg, idx) => (
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        key={idx}
+                        className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                        <div className={`flex max-w-[90%] md:max-w-[75%] gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+
+                            {/* Avatar */}
+                            <div className={`w-8 h-8 rounded-full flex shrink-0 items-center justify-center border border-white/10 shadow-sm mt-auto ${msg.role === 'user' ? 'bg-stone-200 dark:bg-stone-700' : 'bg-gradient-to-br from-pastel-primary to-purple-400'}`}>
+                                {msg.role === 'user' ? <User size={14} className="text-stone-500 dark:text-stone-300" /> : <Bot size={14} className="text-white" />}
+                            </div>
+
+                            {/* Bubble */}
+                            <div
+                                style={{ fontSize: `${chatFontSize}px` }}
+                                className={`p-4 md:p-5 shadow-sm relative group transition-all ${msg.role === 'user'
+                                    ? 'bg-stone-800 text-white rounded-2xl rounded-tr-sm'
+                                    : 'bg-white dark:bg-stone-800 text-stone-800 dark:text-stone-100 border border-stone-100 dark:border-stone-700 rounded-2xl rounded-tl-sm'
+                                    }`}
+                            >
+                                {msg.role === 'model' ? <MarkdownMessage text={msg.text} /> : <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>}
+
+                                {/* Timestamp (Fake for now or could use real if tracked) */}
+                                <div className={`text-[10px] mt-2 opacity-0 group-hover:opacity-50 transition-opacity ${msg.role === 'user' ? 'text-stone-300 text-right' : 'text-stone-400'}`}>
+                                    {msg.role === 'user' ? 'You' : 'ABIA'}
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
                 ))}
-                {isTyping && <div className="text-xs text-stone-400 ml-4 animate-pulse">AI sedang menulis...</div>}
+                {isTyping && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start w-full">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pastel-primary to-purple-400 flex items-center justify-center shadow-sm">
+                                <Bot size={14} className="text-white" />
+                            </div>
+                            <div className="bg-white dark:bg-stone-800 border border-stone-100 dark:border-stone-700 px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm flex gap-1">
+                                <span className="w-2 h-2 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                                <span className="w-2 h-2 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                                <span className="w-2 h-2 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
                 <div ref={chatEndRef} />
             </div>
-            <div className="p-4 bg-white dark:bg-stone-900 border-t border-stone-100 dark:border-stone-800">
-                <div className="flex gap-2 relative">
-                    <input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Tanya tentang chat ini..." className="flex-1 bg-stone-100 dark:bg-stone-800 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-pastel-primary/50 transition-all text-stone-800 dark:text-stone-100 placeholder-stone-400" />
-                    <Button onClick={handleSendMessage} disabled={!userInput.trim() || isTyping} className="!p-3 !rounded-xl"><Send size={20} /></Button>
+
+            {/* Input Area */}
+            <div className="p-4 md:p-6 bg-white dark:bg-stone-900 border-t border-stone-100 dark:border-stone-800 relative z-20">
+                <div className="max-w-4xl mx-auto flex gap-3 relative shadow-sm rounded-2xl bg-stone-50 dark:bg-stone-800 p-2 border border-stone-200 dark:border-stone-700 focus-within:ring-2 focus-within:ring-pastel-primary/30 transition-shadow">
+                    <input
+                        type="text"
+                        value={userInput}
+                        onChange={(e) => setUserInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                        placeholder="Tanya sesuatu tentang chat ini..."
+                        className="flex-1 bg-transparent px-4 py-3 outline-none text-stone-800 dark:text-stone-100 placeholder-stone-400 min-w-0"
+                    />
+                    <Button
+                        onClick={handleSendMessage}
+                        disabled={!userInput.trim() || isTyping}
+                        className={`!p-3 !rounded-xl transition-all ${userInput.trim() ? 'bg-pastel-primary text-white shadow-md' : 'bg-stone-200 dark:bg-stone-700 text-stone-400 dark:text-stone-500'}`}
+                    >
+                        <Send size={20} className={userInput.trim() ? 'ml-0.5' : ''} />
+                    </Button>
                 </div>
+                <p className="text-[10px] text-center text-stone-400 mt-3">ABIA bisa membuat kesalahan. Cek kembali data penting.</p>
             </div>
         </div>
     );

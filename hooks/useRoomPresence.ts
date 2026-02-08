@@ -1,16 +1,28 @@
 import { useEffect, useState } from 'react';
 import { initializeApp } from 'firebase/app';
-import { 
-  getDatabase, 
-  ref, 
-  onValue, 
-  set, 
-  onDisconnect, 
-  serverTimestamp 
+import {
+    getDatabase,
+    ref,
+    onValue,
+    set,
+    onDisconnect,
+    serverTimestamp
 } from 'firebase/database';
 
 // --- TYPES ---
 export type PageCategory = 'landing' | 'creating' | 'reading';
+
+export interface PresenceUser {
+    id: string;
+    userId?: string; // Legacy compataibility
+    name: string;
+    displayName?: string; // Legacy compatibility
+    avatar?: string;
+    status: string;
+    role?: string;
+    device?: 'mobile' | 'desktop';
+    joinedAt?: number;
+}
 
 export interface GlobalStats {
     landing: number;
@@ -21,13 +33,13 @@ export interface GlobalStats {
 
 // --- FIREBASE CONFIGURATION ---
 const firebaseConfig = {
-  apiKey: "AIzaSyCxvaTFcEX-Cqi0Ilwupk50sbZpBPu9-pA",
-  authDomain: "chatrecap-35849.firebaseapp.com",
-  databaseURL: "https://chatrecap-35849-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "chatrecap-35849",
-  storageBucket: "chatrecap-35849.firebasestorage.app",
-  messagingSenderId: "802650323219",
-  appId: "1:802650323219:web:2a6a8b170c3b5a680202e6"
+    apiKey: "AIzaSyCxvaTFcEX-Cqi0Ilwupk50sbZpBPu9-pA",
+    authDomain: "chatrecap-35849.firebaseapp.com",
+    databaseURL: "https://chatrecap-35849-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "chatrecap-35849",
+    storageBucket: "chatrecap-35849.firebasestorage.app",
+    messagingSenderId: "802650323219",
+    appId: "1:802650323219:web:2a6a8b170c3b5a680202e6"
 };
 
 // Initialize Firebase (Hanya sekali di luar hook agar tidak re-init terus menerus)
@@ -36,13 +48,13 @@ const db = getDatabase(app);
 
 // Helper: Generate Session ID Unik per Browser
 const getSessionId = () => {
-  let id = sessionStorage.getItem('visitor_session_id');
-  if (!id) {
-    // Buat ID acak sederhana
-    id = 'user_' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
-    sessionStorage.setItem('visitor_session_id', id);
-  }
-  return id;
+    let id = sessionStorage.getItem('visitor_session_id');
+    if (!id) {
+        // Buat ID acak sederhana
+        id = 'user_' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+        sessionStorage.setItem('visitor_session_id', id);
+    }
+    return id;
 };
 
 export const useRoomPresence = (
@@ -62,7 +74,7 @@ export const useRoomPresence = (
 
     useEffect(() => {
         const userId = getSessionId();
-        
+
         // 1. Referensi Database
         const myStatusRef = ref(db, `status/${userId}`);
         const allStatusRef = ref(db, 'status');
@@ -72,7 +84,7 @@ export const useRoomPresence = (
         const unsubscribeConnection = onValue(connectedRef, (snap) => {
             if (snap.val() === true) {
                 setIsConnected(true);
-                
+
                 // Saat konek, simpan data diri
                 set(myStatusRef, {
                     page: category,

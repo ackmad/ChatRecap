@@ -1,18 +1,23 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 import { Message, AnalysisResult } from "../types";
-import { SYSTEM_INSTRUCTION_CHAT, SYSTEM_INSTRUCTION_ANALYSIS, GEMINI_MODEL_TEXT } from "../constants";
+import {
+  SYSTEM_INSTRUCTION_CHAT,
+  SYSTEM_INSTRUCTION_ANALYSIS,
+  GEMINI_MODEL_TEXT
+} from "../constants";
 
-// --- LOAD BALANCING HELPER (ROTASI KEY) ---
+// =====================================================
+// API KEY ROTATION & USAGE TRACKING
+// =====================================================
 const getApiKeys = (): string[] => {
-  // Ambil keys dari VITE_GEMINI_API_KEYS (format: key1,key2,key3)
   const keysString = import.meta.env.VITE_GEMINI_API_KEYS || "";
-
-  // Fallback ke VITE_GEMINI_API_KEY (jika user lupa ganti nama variabel)
   const singleKey = import.meta.env.VITE_GEMINI_API_KEY;
 
   if (keysString) {
-    // Pisahkan berdasarkan koma dan hapus spasi kosong
-    return keysString.split(',').map((k: string) => k.trim()).filter((k: string) => k.length > 0);
+    return keysString
+      .split(",")
+      .map((k: string) => k.trim())
+      .filter((k: string) => k.length > 0);
   } else if (singleKey) {
     return [singleKey];
   }
@@ -21,47 +26,107 @@ const getApiKeys = (): string[] => {
 
 const API_KEYS = getApiKeys();
 
-// --- FORMATTER HELPER ---
+interface TokenUsage {
+  promptTokens: number;
+  responseTokens: number;
+  totalTokens: number;
+}
+
+// =====================================================
+// HELPERS
+// =====================================================
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Format chat with Smart Sampling (Start - Mid - End)
 const formatChatForPrompt = (messages: Message[]): string => {
-  const MAX_MESSAGES = 2000;
+  const MAX_MESSAGES = 12000; // Increased limit for detailed analysis in one go
 
   if (messages.length <= MAX_MESSAGES) {
     return messages.map(m => `[${m.date.toISOString()}] ${m.sender}: ${m.content}`).join('\n');
   }
 
+  // Smart Sampling Strategy: Start (Context), Middle (Peak), End (Recent)
   const chunkSize = Math.floor(MAX_MESSAGES / 3);
+
   const start = messages.slice(0, chunkSize);
-  const middleStartIdx = Math.floor(messages.length / 2) - Math.floor(chunkSize / 2);
-  const middle = messages.slice(middleStartIdx, middleStartIdx + chunkSize);
+  const midStart = Math.floor(messages.length / 2) - Math.floor(chunkSize / 2);
+  const middle = messages.slice(midStart, midStart + chunkSize);
   const end = messages.slice(-chunkSize);
 
   return [
     ...start.map(m => `[${m.date.toISOString()}] ${m.sender}: ${m.content}`),
-    "\n... [BAGIAN TENGAH DILEWATI UTK EFISIENSI] ...\n",
+    `\n... [SAMPEL BAGIAN TENGAH DILEWATI (Total ${messages.length} pesan)] ...\n`,
     ...middle.map(m => `[${m.date.toISOString()}] ${m.sender}: ${m.content}`),
-    "\n... [BAGIAN AKHIR] ...\n",
+    `\n... [SAMPEL BAGIAN AKHIR] ...\n`,
     ...end.map(m => `[${m.date.toISOString()}] ${m.sender}: ${m.content}`)
   ].join('\n');
 };
 
-const cleanJsonOutput = (text: string): string => {
-  console.log("RAW AI RESPONSE (Sebelum Clean):", text);
-
-  let cleaned = text.replace(/```json/gi, '').replace(/```/g, '');
-  const firstBrace = cleaned.indexOf('{');
-  const lastBrace = cleaned.lastIndexOf('}');
-
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-  } else {
-    console.warn("Warning: Tidak ditemukan format JSON {} yang valid.");
-    return text;
-  }
-
-  return cleaned.trim();
+const formatChatLines = (messages: Message[]): string => {
+  return messages.map(m => `[${m.date.toISOString()}] ${m.sender}: ${m.content}`).join('\n');
 };
 
-// --- FUNGSI UTAMA ANALISIS (DENGAN ROTASI KEY) ---
+const cleanJsonOutput = (text: string): string => {
+  let cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  }
+  return cleaned;
+};
+
+const buildModel = (genAI: GoogleGenerativeAI, systemInstruction: string) => {
+  return genAI.getGenerativeModel({
+    model: GEMINI_MODEL_TEXT,
+    systemInstruction: systemInstruction,
+    generationConfig: {
+      temperature: 0.7,
+      topK: 40,
+      topP: 0.95,
+      maxOutputTokens: 8192,
+    },
+    safetySettings: [
+      { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+      { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+      { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+      { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH }
+    ],
+  });
+};
+
+const callGeminiWithRetry = async (model: any, prompt: string, retries: number = 3): Promise<{ text: string, usage: TokenUsage }> => {
+  let attempt = 0;
+  while (attempt < retries) {
+    try {
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+
+      const usageMetadata = response.usageMetadata || {};
+      const usage: TokenUsage = {
+        promptTokens: usageMetadata.promptTokenCount || 0,
+        responseTokens: usageMetadata.candidatesTokenCount || 0,
+        totalTokens: usageMetadata.totalTokenCount || 0
+      };
+
+      return { text, usage };
+    } catch (error: any) {
+      const errMsg = error?.message || "";
+      if (errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("RESOURCE_EXHAUSTED")) {
+        await sleep(2000 * (attempt + 1));
+      }
+      attempt++;
+      if (attempt >= retries) throw error;
+      await sleep(1000);
+    }
+  }
+  throw new Error("Gemini retry failed");
+};
+
+// =====================================================
+// MAIN ANALYSIS FUNCTION (SINGLE REQUEST SMART SAMPLING)
+// =====================================================
 export const analyzeChatWithGemini = async (
   messages: Message[],
   onStatusUpdate: (status: string) => void
@@ -71,64 +136,53 @@ export const analyzeChatWithGemini = async (
     throw new Error("API Key tidak ditemukan. Pastikan VITE_GEMINI_API_KEYS ada di file .env");
   }
 
-  onStatusUpdate("📄 Mempersiapkan data chat...");
+  onStatusUpdate("📄 Menyiapkan sampel data chat (agar hemat token & cepat)...");
+
+  // Use Smart Sampling Strategy (Start - Mid - End)
   const chatContext = formatChatForPrompt(messages);
 
   const prompt = `
 Tolong analisis chat berikut dan kembalikan output HANYA DALAM FORMAT JSON. 
-Jangan ada teks pengantar.
+Jangan ada teks pengantar. Langsung data.
 
-TRANSKRIP CHAT:
+TRANSKRIP CHAT (SAMPEL START - MID - END):
 ${chatContext}
-`;
+`.trim();
 
   let lastError: any = null;
+  let usageStats: TokenUsage = { promptTokens: 0, responseTokens: 0, totalTokens: 0 };
 
-  // --- LOOPING UNTUK MENCOBA SETIAP KEY ---
-  for (let i = 0; i < API_KEYS.length; i++) {
-    const currentKey = API_KEYS[i];
-    const keyIndex = i + 1; // Untuk log (Server 1, Server 2, dst)
+  // =====================================================
+  // LOOP API KEY (SINGLE STEP ONLY)
+  // =====================================================
+  for (let keyIndex = 0; keyIndex < API_KEYS.length; keyIndex++) {
+    const currentKey = API_KEYS[keyIndex];
 
     try {
-      onStatusUpdate(`🔌 Menggunakan API ${keyIndex} (Mencoba menghubungkan...)`);
+      onStatusUpdate(`🔌 Menggunakan API Key #${keyIndex + 1}...`);
 
       const genAI = new GoogleGenerativeAI(currentKey);
+      const model = buildModel(genAI, SYSTEM_INSTRUCTION_ANALYSIS);
 
-      const model = genAI.getGenerativeModel({
-        model: GEMINI_MODEL_TEXT,
-        systemInstruction: SYSTEM_INSTRUCTION_ANALYSIS,
-        generationConfig: {
-          responseMimeType: "application/json",
-        },
-        safetySettings: [
-          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH }
-        ]
-      });
+      onStatusUpdate(`🧠 Menganalisa pola chat (Single Smart Request)...`);
 
-      onStatusUpdate(`🧠 API ${keyIndex} sedang membaca & menganalisis chat...`);
+      // Single Request with Retry
+      const result = await callGeminiWithRetry(model, prompt, 3);
 
-      const result = await model.generateContent(prompt);
-      const response = result.response;
-      const text = response.text();
+      usageStats = result.usage;
+      const successKeyIndex = keyIndex + 1;
 
-      onStatusUpdate("📥 Menerima respon dari AI...");
+      console.log(`📊 [Analysis] Success using API Key #${successKeyIndex}`);
+      console.log(`   Tokens: Prompt=${usageStats.promptTokens}, Response=${usageStats.responseTokens}, Total=${usageStats.totalTokens}`);
 
-      if (!text) {
-        throw new Error("Respon AI kosong.");
-      }
+      onStatusUpdate("📥 Menerima respon AI...");
+      const cleanedJson = cleanJsonOutput(result.text);
 
-      onStatusUpdate("🧹 Membersihkan data JSON...");
-      const cleanedText = cleanJsonOutput(text);
+      onStatusUpdate("🔍 Validasi struktur data...");
+      const parsed = JSON.parse(cleanedJson) as AnalysisResult;
 
-      onStatusUpdate("🔍 Membaca structure data...");
-      const parsed = JSON.parse(cleanedText) as AnalysisResult;
+      onStatusUpdate(`✅ Analisis Selesai! (${usageStats.totalTokens} tokens)`);
 
-      onStatusUpdate("✅ Analisis Selesai!");
-
-      // Jika BERHASIL, langsung return (hentikan loop)
       return {
         ...parsed,
         phases: parsed.phases || [],
@@ -143,55 +197,57 @@ ${chatContext}
       };
 
     } catch (error: any) {
-      console.warn(`⚠️ API ${keyIndex} Gagal:`, error.message);
+      console.warn(`⚠️ API Key ${keyIndex + 1} gagal:`, error.message);
       lastError = error;
-      const errMsg = error.message || "";
 
-      // Cek jenis error untuk memutuskan ganti key atau tidak
-      // Tambahkan '403' dan 'API key' agar kalau key bocor/mati, dia pindah ke key berikutnya
-      const isQuotaError = errMsg.includes('429') || errMsg.includes('503') || errMsg.includes('quota');
-      const isKeyError = errMsg.includes('403') || errMsg.includes('API key') || errMsg.includes('key not valid');
+      const errMsg = error?.message || "";
+
+      const isQuotaError =
+        errMsg.includes("429") ||
+        errMsg.includes("quota") ||
+        errMsg.includes("RESOURCE_EXHAUSTED");
+
+      const isKeyError =
+        errMsg.includes("403") ||
+        errMsg.includes("API key") ||
+        errMsg.includes("key not valid") ||
+        errMsg.includes("leaked");
 
       if (isQuotaError || isKeyError) {
-        onStatusUpdate(`⚠️ API ${keyIndex} Bermasalah (Limit/Invalid). Mengganti ke API selanjutnya...`);
-        // Lanjut ke loop berikutnya (key selanjutnya)
+        onStatusUpdate(`⚠️ API ${keyIndex + 1} limit/invalid. Pindah ke key selanjutnya...`);
+        await sleep(1500);
         continue;
-      } else if (errMsg.includes('JSON')) {
-        // Jika error JSON Parse, berarti AI jawab ngawur, tidak perlu ganti key, tapi lempar error ke user
-        onStatusUpdate("❌ Format jawaban AI rusak.");
-        throw new Error(`Format jawaban AI rusak. Cek Console (F12).`);
-      } else {
-        // Jika error lain (misal 400 Bad Request karena chat kepanjangan banget), lempar error
-        onStatusUpdate(`❌ Terjadi error pada API ${keyIndex}: ${errMsg}`);
-        break;
       }
+
+      onStatusUpdate(`❌ Error pada API ${keyIndex + 1}: ${errMsg}`);
+      break;
     }
   }
 
-  // Jika loop selesai tapi tidak ada yang berhasil
   console.error("Semua API Key gagal:", lastError);
 
-  onStatusUpdate("❌ TOKEN sudah habis.");
+  onStatusUpdate("❌ TOKEN / QUOTA habis.");
 
-  // Custom Error Object sesuai permintaan user
   throw {
-    userMsg: "TOKEN sudah habis tolong beritahu developer dan mengganti API nya.",
+    userMsg: "TOKEN/QUOTA sudah habis. Tolong beritahu developer untuk upgrade billing / ganti API key.",
     technicalMsg: lastError?.message || "All keys exhausted."
   };
 };
 
-// --- FUNGSI CHAT SESSION (Random Key) ---
+// =====================================================
+// CHAT SESSION (RANDOM KEY)
+// =====================================================
 export const createChatSession = (messages: Message[]) => {
   if (API_KEYS.length === 0) {
     throw new Error("API Key tidak ditemukan.");
   }
 
-  // PERBAIKAN: Ambil key secara RANDOM agar beban terbagi
-  // Tidak hanya membebani Key 1
   const randomIndex = Math.floor(Math.random() * API_KEYS.length);
   const key = API_KEYS[randomIndex];
 
   const genAI = new GoogleGenerativeAI(key);
+
+  // SMART SAMPLING (Start-Mid-End)
   const chatContext = formatChatForPrompt(messages);
 
   const model = genAI.getGenerativeModel({
@@ -201,7 +257,7 @@ export const createChatSession = (messages: Message[]) => {
       temperature: 0.7,
       topK: 40,
       topP: 0.95,
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192,
     },
     safetySettings: [
       { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
@@ -215,11 +271,11 @@ export const createChatSession = (messages: Message[]) => {
     history: [
       {
         role: "user",
-        parts: [{ text: `Ini adalah data chat history kami:\n${chatContext}` }],
+        parts: [{ text: `Ini adalah data chat history kami (Start-Mid-End Sample):\n${chatContext}` }],
       },
       {
         role: "model",
-        parts: [{ text: "Oke, saya siap ngobrol tentang chat ini." }],
+        parts: [{ text: "Oke, saya siap ngobrol. Saya sudah membaca pola dari awal sampai akhir." }],
       }
     ],
   });
@@ -227,45 +283,45 @@ export const createChatSession = (messages: Message[]) => {
   return chat;
 };
 
-// --- FUNGSI SEND MESSAGE DENGAN RETRY (ROTASI KEY) ---
+// =====================================================
+// SEND CHAT MESSAGE WITH RETRY (ROTASI KEY + LIMIT CONTEXT)
+// =====================================================
 export const sendChatMessageWithRetry = async (
   messages: Message[],
   conversationHistory: { role: string; text: string }[],
   userMessage: string
 ): Promise<string> => {
+
   if (API_KEYS.length === 0) {
     throw new Error("API Key tidak ditemukan.");
   }
 
+  // SMART SAMPLING
   const chatContext = formatChatForPrompt(messages);
+
   let lastError: any = null;
 
-  // Convert conversation history to Gemini format
   const history = [
     {
       role: "user",
-      parts: [{ text: `Ini adalah data chat history kami:\n${chatContext}` }],
+      parts: [{ text: `Ini adalah data chat history kami (Start-Mid-End Sample):\n${chatContext}` }],
     },
     {
       role: "model",
-      parts: [{ text: "Oke, saya siap ngobrol tentang chat ini." }],
+      parts: [{ text: "Oke, saya siap ngobrol. Saya sudah membaca pola dari awal sampai akhir." }],
     },
-    // Add previous conversation
-    ...conversationHistory.flatMap(msg => [
-      {
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.text }]
-      }
-    ])
+    ...conversationHistory.map((msg) => ({
+      role: msg.role === "user" ? "user" : "model",
+      parts: [{ text: msg.text }],
+    })),
   ];
 
-  // Try each API key
   for (let i = 0; i < API_KEYS.length; i++) {
     const currentKey = API_KEYS[i];
     const keyIndex = i + 1;
 
     try {
-      console.log(`🔑 Chat menggunakan API Key #${keyIndex}`);
+      console.log(`🔑 Chat: Mencoba API Key #${keyIndex}...`);
 
       const genAI = new GoogleGenerativeAI(currentKey);
       const model = genAI.getGenerativeModel({
@@ -275,7 +331,7 @@ export const sendChatMessageWithRetry = async (
           temperature: 0.7,
           topK: 40,
           topP: 0.95,
-          maxOutputTokens: 4096,
+          maxOutputTokens: 8192,
         },
         safetySettings: [
           { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
@@ -289,29 +345,41 @@ export const sendChatMessageWithRetry = async (
       const result = await chat.sendMessage(userMessage);
       const text = result.response.text();
 
-      console.log(`✅ Chat berhasil dengan API Key #${keyIndex}`);
+      console.log(`✅ Chat sukses dengan API Key #${keyIndex}`);
       return text;
 
     } catch (error: any) {
-      console.warn(`⚠️ API ${keyIndex} Gagal:`, error.message);
       lastError = error;
       const errMsg = error.message || "";
+      console.warn(`⚠️ API Key #${keyIndex} gagal:`, errMsg);
 
-      // Check if we should try next key
-      const isQuotaError = errMsg.includes('429') || errMsg.includes('503') || errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED');
-      const isKeyError = errMsg.includes('403') || errMsg.includes('API key') || errMsg.includes('key not valid') || errMsg.includes('leaked');
+      const isQuotaError =
+        errMsg.includes("429") ||
+        errMsg.includes("503") ||
+        errMsg.includes("quota") ||
+        errMsg.includes("RESOURCE_EXHAUSTED");
+
+      const isKeyError =
+        errMsg.includes("403") ||
+        errMsg.includes("API key") ||
+        errMsg.includes("key not valid") ||
+        errMsg.includes("leaked");
 
       if (isQuotaError || isKeyError) {
-        console.log(`🔄 Mencoba API Key selanjutnya...`);
-        continue; // Try next key
-      } else {
-        // Other errors, throw immediately
-        throw error;
+        console.log(`🔄 API #${keyIndex} bermasalah, rotasi ke key berikutnya...`);
+        // Tunggu sebentar sebelum pindah biar ga spam
+        await sleep(500);
+        continue;
       }
+
+      // Jika error lain yang bukan quota/key (misal network error atau input bad request), 
+      // bisa coba key lain juga atau langsung throw. 
+      // Untuk amannya kita coba key selanjutnya saja.
+      console.log(`🔄 Mencoba recovery dengan key selanjutnya...`);
+      continue;
     }
   }
 
-  // All keys failed
-  console.error("Semua API Key gagal untuk chat:", lastError);
+  console.error("❌ Semua API Key telah dicoba dan gagal untuk chat.");
   throw lastError || new Error("Semua API key gagal.");
 };
