@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Upload, FileText, MessageSquare, ArrowRight, ShieldCheck, RefreshCw, Send, Sparkles, Clock, Calendar, MessageCircle, Heart, User, BookOpen, Feather, Cpu, Layers, ArrowLeft, Coffee, Sun, Moon, Minus, Plus, Hourglass, Tag, Scale, AlertCircle, Quote, ChevronLeft, ChevronRight, Info, BarChart2, TrendingUp, Music, Bot, Lock, CheckCircle, HelpCircle, File, Smartphone, Users, Eye, Brain, Terminal, XCircle, AlertTriangle, Download, Share2, Image as ImageIcon, Grid, Layout as LayoutIcon, Type, X, Zap, Search, Menu, ChevronDown } from 'lucide-react';
+import { Upload, FileText, MessageSquare, ArrowRight, ShieldCheck, RefreshCw, Send, Sparkles, Clock, Calendar, MessageCircle, Heart, User, BookOpen, Feather, Cpu, Layers, ArrowLeft, Coffee, Sun, Moon, Minus, Plus, Hourglass, Tag, Scale, AlertCircle, Quote, ChevronLeft, ChevronRight, Info, BarChart2, TrendingUp, Music, Bot, Lock, CheckCircle, HelpCircle, File, Smartphone, Users, Eye, Brain, Terminal, XCircle, AlertTriangle, Download, Share2, Image as ImageIcon, Grid, Layout as LayoutIcon, Type, X, Zap, Search, Menu, ChevronDown, Smile } from 'lucide-react';
 import { useRoomPresence } from './hooks/useRoomPresence';
 import { RoomPresenceBar } from './components/RoomPresenceBar';
 import { PresenceToast } from './components/PresenceToast';
@@ -1141,9 +1141,95 @@ const App: React.FC = () => {
 
             {/* Hero Section - JANGAN DIUBAH TEKSNYA */}
             <section className="relative min-h-screen flex flex-col justify-center items-center px-4 text-center z-10 max-w-5xl mx-auto">
-                {/* Floating Elements */}
-                <motion.div animate={{ y: [0, -20, 0] }} transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }} className="absolute top-20 left-10 text-pastel-primary opacity-50 hidden md:block"><MessageCircle size={48} /></motion.div>
-                <motion.div animate={{ y: [0, 20, 0] }} transition={{ repeat: Infinity, duration: 5, ease: "easeInOut" }} className="absolute bottom-20 right-10 text-pastel-card opacity-50 hidden md:block"><Heart size={48} /></motion.div>
+                {/* LIVELY ANIMATED BACKGROUND ELEMENTS */}
+
+                {/* 1. Floating Gradient Blobs (Soft & Dreamy) */}
+                <motion.div
+                    animate={{ scale: [1, 1.2, 1], x: [0, 50, 0], y: [0, 30, 0] }}
+                    transition={{ repeat: Infinity, duration: 8, ease: "easeInOut" }}
+                    className="absolute top-20 -left-20 w-72 h-72 bg-purple-200/40 dark:bg-purple-900/20 rounded-full blur-3xl -z-10"
+                />
+                <motion.div
+                    animate={{ scale: [1, 1.1, 1], x: [0, -30, 0], y: [0, 50, 0] }}
+                    transition={{ repeat: Infinity, duration: 10, ease: "easeInOut", delay: 1 }}
+                    className="absolute bottom-20 -right-20 w-80 h-80 bg-pink-200/40 dark:bg-pink-900/20 rounded-full blur-3xl -z-10"
+                />
+
+                {/* 2. Floating Icons (Chat Theme & Cute) */}
+
+                {/* Left Side Floaters */}
+                <motion.div
+                    animate={{ y: [0, -25, 0], rotate: [0, 5, -5, 0] }}
+                    transition={{ repeat: Infinity, duration: 5, ease: "easeInOut" }}
+                    className="absolute top-1/4 left-10 md:left-20 text-pastel-primary opacity-60 hidden md:block"
+                >
+                    <MessageCircle size={48} fill="currentColor" className="text-purple-200 dark:text-purple-900/50" />
+                </motion.div>
+
+                <motion.div
+                    animate={{ y: [0, 15, 0], x: [0, 10, 0] }}
+                    transition={{ repeat: Infinity, duration: 6, ease: "easeInOut", delay: 1 }}
+                    className="absolute bottom-1/3 left-16 md:left-32 text-pink-400 opacity-50 hidden md:block"
+                >
+                    <Heart size={32} fill="currentColor" className="text-pink-100 dark:text-pink-900/30" />
+                </motion.div>
+
+                <motion.div
+                    animate={{ y: [0, -20, 0], opacity: [0.3, 0.6, 0.3] }}
+                    transition={{ repeat: Infinity, duration: 7, ease: "easeInOut", delay: 2 }}
+                    className="absolute top-2/3 left-8 text-amber-400 opacity-40 hidden md:block"
+                >
+                    <Zap size={24} fill="currentColor" />
+                </motion.div>
+
+                {/* Right Side Floaters */}
+                <motion.div
+                    animate={{ y: [0, 30, 0], rotate: [0, -10, 10, 0] }}
+                    transition={{ repeat: Infinity, duration: 6, ease: "easeInOut", delay: 0.5 }}
+                    className="absolute top-1/3 right-10 md:right-24 text-pastel-card opacity-60 hidden md:block"
+                >
+                    <div className="bg-white dark:bg-stone-800 p-3 rounded-2xl shadow-lg border border-stone-100 dark:border-stone-700 transform rotate-12">
+                        <Smile size={40} className="text-yellow-400" />
+                    </div>
+                </motion.div>
+
+                <motion.div
+                    animate={{ y: [0, -15, 0], x: [0, -5, 0] }}
+                    transition={{ repeat: Infinity, duration: 5, ease: "easeInOut", delay: 1.5 }}
+                    className="absolute bottom-1/4 right-20 md:right-40 text-blue-400 opacity-50 hidden md:block"
+                >
+                    <Send size={36} className="transform -rotate-45" />
+                </motion.div>
+
+                <motion.div
+                    animate={{ scale: [1, 1.2, 1], rotate: [0, 180, 360] }}
+                    transition={{ repeat: Infinity, duration: 12, ease: "linear" }}
+                    className="absolute top-20 right-1/4 text-green-400 opacity-30 hidden md:block"
+                >
+                    <Sparkles size={28} />
+                </motion.div>
+
+                {/* Tiny Particles (Star Dust) */}
+                {[...Array(5)].map((_, i) => (
+                    <motion.div
+                        key={i}
+                        animate={{
+                            y: [0, -40, 0],
+                            opacity: [0, 0.8, 0]
+                        }}
+                        transition={{
+                            repeat: Infinity,
+                            duration: 3 + Math.random() * 2,
+                            ease: "easeInOut",
+                            delay: Math.random() * 2
+                        }}
+                        className="absolute w-1 h-1 bg-stone-400 rounded-full"
+                        style={{
+                            top: `${20 + Math.random() * 60}%`,
+                            left: `${10 + Math.random() * 80}%`,
+                        }}
+                    />
+                ))}
 
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-6 inline-block">
                     <span className="px-4 py-1.5 rounded-full bg-white/60 dark:bg-stone-800/60 border border-pastel-primary/30 text-pastel-primary text-sm font-bold shadow-sm backdrop-blur-sm">
