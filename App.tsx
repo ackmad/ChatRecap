@@ -17,6 +17,7 @@ import { ChatSession } from "@google/generative-ai";
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { APP_VERSION } from './constants';
+import faviconLogo from './src/img/favicon.png';
 
 // --- Improved Adaptive Copywriting & Theme System ---
 const getThemeConfig = (type?: RelationshipType) => {
@@ -1120,9 +1121,35 @@ const App: React.FC = () => {
             {/* Navbar Fixed */}
             <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 dark:bg-stone-900/90 backdrop-blur-md border-b border-stone-200 dark:border-stone-800 px-6 py-4 shadow-sm">
                 <div className="max-w-7xl mx-auto flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <Sparkles className="text-pastel-primary" size={24} />
-                        <span className="font-bold text-lg text-stone-800 dark:text-stone-100">Recap Chat</span>
+                    <div className="relative flex items-center gap-2 group">
+                        {/* Neon Glow Effect */}
+                        <motion.div
+                            className="absolute -inset-3 bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 rounded-xl opacity-0 group-hover:opacity-30 dark:opacity-20 dark:group-hover:opacity-50 blur-lg transition-opacity duration-500"
+                            animate={{
+                                backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
+                            }}
+                            transition={{
+                                duration: 3,
+                                repeat: Infinity,
+                                ease: "linear"
+                            }}
+                            style={{ backgroundSize: "200% 200%" }}
+                        />
+                        <motion.div
+                            className="absolute -inset-3 bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 rounded-xl opacity-20 dark:opacity-40 blur-md"
+                            animate={{
+                                backgroundPosition: ["100% 50%", "0% 50%", "100% 50%"],
+                            }}
+                            transition={{
+                                duration: 3,
+                                repeat: Infinity,
+                                ease: "linear"
+                            }}
+                            style={{ backgroundSize: "200% 200%" }}
+                        />
+
+                        <img src={faviconLogo} alt="Recap Chat Logo" className="w-8 h-8 object-contain relative z-10" />
+                        <span className="font-bold text-lg text-stone-800 dark:text-stone-100 relative z-10">Recap Chat</span>
                     </div>
 
                     <div className="hidden md:flex items-center gap-8 text-sm font-medium text-stone-600 dark:text-stone-400">
@@ -2690,9 +2717,9 @@ const App: React.FC = () => {
                         <h2 className="text-2xl font-bold text-stone-800 dark:text-stone-100 mb-6 text-center font-heading">Connect With Me</h2>
                         <div className="grid md:grid-cols-3 gap-4">
                             {[
-                                { icon: MessageCircle, label: "Instagram", value: "@ackmadelfan", link: "https://instagram.com/ackmadelfan" },
+                                { icon: MessageCircle, label: "Instagram", value: "@Ackmad2019", link: "https://instagram.com/ackmad2019" },
                                 { icon: Terminal, label: "GitHub", value: "ackmad", link: "https://github.com/ackmad" },
-                                { icon: MessageSquare, label: "Email", value: "contact@ackmad.dev", link: "mailto:contact@ackmad.dev" }
+                                { icon: MessageSquare, label: "Email", value: "ackmadelfanp@gmail.com", link: "mailto:ackmadelfanp@gmail.com" }
                             ].map((item, i) => (
                                 <a key={i} href={item.link} target="_blank" rel="noopener noreferrer" className="bg-white/60 dark:bg-stone-800/60 p-6 rounded-2xl border border-stone-100 dark:border-stone-700 text-center hover:border-pastel-primary hover:shadow-lg transition-all group">
                                     <item.icon className="text-pastel-primary mx-auto mb-3 group-hover:scale-110 transition-transform" size={32} />
