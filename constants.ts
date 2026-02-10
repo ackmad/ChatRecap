@@ -1,7 +1,7 @@
 // export const GEMINI_MODEL_TEXT = 'gemini-1.5-flash';
 export const GEMINI_MODEL_TEXT = 'gemini-3-flash-preview';
 
-export const APP_VERSION = 'v.2.7.8';
+export const APP_VERSION = 'v.2.8.1';
 
 // ---------------------------------------------------------------------------
 // 3-STEP STRUCTURED CHAT ANALYSIS PIPELINE
