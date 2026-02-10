@@ -52,7 +52,7 @@ const SEO: React.FC<SEOProps> = ({
 
       {/* Google Verification */}
       {/* Replace with actual verification code if provided later */}
-      <meta name="google-site-verification" content="G-XXXXXXXXXX" />
+      <meta name="google-site-verification" content="zTVoeVpcBxE4meKyGu9_FDe-mFQXtfdaetdxR_EIdFw" />
     </Helmet>
   );
 };
