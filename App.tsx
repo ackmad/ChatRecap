@@ -19,6 +19,7 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { APP_VERSION } from './constants';
 import faviconLogo from './src/img/favicon.png';
+import SEO from './components/SEO.tsx';
 
 // --- Improved Adaptive Copywriting & Theme System ---
 const getThemeConfig = (type?: RelationshipType) => {
@@ -2841,27 +2842,74 @@ const App: React.FC = () => {
         </>
     );
 
+    const seoMetadata = useMemo(() => {
+        switch (appState) {
+            case AppState.LANDING:
+                return {
+                    title: "Recap Chat — Pahami Percakapan WhatsApp Kamu",
+                    description: "Upload file chat WhatsApp, dapatkan analisis emosi, topik, dan timeline. Curhat anonim tanpa simpan data.",
+                    canonical: "https://recapchat.xyz"
+                };
+            case AppState.UPLOAD:
+            case AppState.INSTRUCTIONS:
+                return {
+                    title: "Mulai Recap - Upload File Chat",
+                    description: "Mulai analisis chat kamu dengan mengupload file .txt dari WhatsApp. Aman dan privasi terjaga."
+                };
+            case AppState.PROCESSING:
+                return {
+                    title: "Sedang Menganalisis... - Recap Chat"
+                };
+            case AppState.INSIGHTS:
+                return {
+                    title: "Hasil Analisis Chat - Recap Chat",
+                    description: "Lihat hasil analisis lengkap percakapanmu: timeline, emosi, topik, dan mood meter."
+                };
+            case AppState.CHAT:
+                return {
+                    title: "Tanya AI tentang Chat - Recap Chat",
+                    description: "Ngobrol dengan AI tentang isi chat kamu. Tanyakan apa saja!"
+                };
+            case AppState.ABOUT_WEBSITE:
+                return {
+                    title: "Tentang Recap Chat - Privasi & Cara Kerja",
+                    description: "Pelajari cara kerja Recap Chat dan komitmen privasi kami. Data tidak disimpan di server."
+                };
+            case AppState.ABOUT_CREATOR:
+                return {
+                    title: "Tentang Pembuat - Recap Chat"
+                };
+            default:
+                return {
+                    title: "Recap Chat"
+                };
+        }
+    }, [appState]);
+
     return (
-        <AnimatePresence mode="wait">
-            <motion.div key={appState} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="min-h-screen">
-                {appState === AppState.LANDING && renderLanding()}
-                {appState === AppState.ABOUT_WEBSITE && renderAboutAboutWebsite()}
-                {appState === AppState.ABOUT_CREATOR && renderAboutCreator()}
-                {/* Merged Instructions and Upload into Studio */}
-                {appState === AppState.INSTRUCTIONS && renderStudio()}
-                {appState === AppState.UPLOAD && renderStudio()}
-                {appState === AppState.PROCESSING &&
-                    <LoadingScreen
-                        isAnalysisComplete={isAnalysisComplete}
-                        onTransitionDone={onLoadingTransitionDone}
-                        logs={aiStatusLogs}
-                        errorDetails={errorDetails}
-                    />
-                }
-                {appState === AppState.INSIGHTS && renderInsights()}
-                {appState === AppState.CHAT && renderChat()}
-            </motion.div>
-        </AnimatePresence>
+        <>
+            <SEO {...seoMetadata} />
+            <AnimatePresence mode="wait">
+                <motion.div key={appState} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="min-h-screen">
+                    {appState === AppState.LANDING && renderLanding()}
+                    {appState === AppState.ABOUT_WEBSITE && renderAboutAboutWebsite()}
+                    {appState === AppState.ABOUT_CREATOR && renderAboutCreator()}
+                    {/* Merged Instructions and Upload into Studio */}
+                    {appState === AppState.INSTRUCTIONS && renderStudio()}
+                    {appState === AppState.UPLOAD && renderStudio()}
+                    {appState === AppState.PROCESSING &&
+                        <LoadingScreen
+                            isAnalysisComplete={isAnalysisComplete}
+                            onTransitionDone={onLoadingTransitionDone}
+                            logs={aiStatusLogs}
+                            errorDetails={errorDetails}
+                        />
+                    }
+                    {appState === AppState.INSIGHTS && renderInsights()}
+                    {appState === AppState.CHAT && renderChat()}
+                </motion.div>
+            </AnimatePresence>
+        </>
     );
 };
 
