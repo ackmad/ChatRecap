@@ -14,7 +14,7 @@ export const GEMINI_MODELS = [
 // Backward compatibility - default model (first priority)
 export const GEMINI_MODEL_TEXT = GEMINI_MODELS[0];
 
-export const APP_VERSION = 'v.2.8.3';
+export const APP_VERSION = 'v3.0.3';
 
 // =====================================================
 // READING STRATEGY CONFIGURATION

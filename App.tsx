@@ -1199,9 +1199,14 @@ const App: React.FC = () => {
                         <button onClick={() => setAppState(AppState.LANDING)} className="hover:text-pastel-primary transition-colors">Home</button>
                         <a href="#fitur" className="hover:text-pastel-primary transition-colors">Fitur</a>
                         <a href="#cara-kerja" className="hover:text-pastel-primary transition-colors">Cara Kerja</a>
+                        <a href="#apa-yang-baru" className="hover:text-pastel-primary transition-colors relative group flex items-center gap-1">
+                            Apa yang Baru
+                            <span className="absolute -top-2 -right-4 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white text-[9px] font-bold leading-none">NEW</span>
+                        </a>
                         <button onClick={() => setAppState(AppState.ABOUT_WEBSITE)} className="hover:text-pastel-primary transition-colors">Tentang Website</button>
                         <button onClick={() => setAppState(AppState.ABOUT_CREATOR)} className="hover:text-pastel-primary transition-colors">Tentang Pembuat</button>
                     </div>
+
                     <div className="flex items-center gap-3">
 
                         <Button onClick={() => setAppState(AppState.UPLOAD)} className="!px-6 !py-2 text-sm">Mulai Rekap</Button>
@@ -1696,8 +1701,148 @@ const App: React.FC = () => {
                 </div>
             </section>
 
+            {/* Section: Apa yang Baru (Changelog) */}
+            <section id="apa-yang-baru" className="py-20 px-4 bg-gradient-to-br from-violet-50 via-purple-50 to-fuchsia-50 dark:from-violet-950/20 dark:via-purple-950/20 dark:to-fuchsia-950/20">
+                <div className="max-w-4xl mx-auto">
+                    {/* Header */}
+                    <div className="text-center mb-14">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            whileInView={{ opacity: 1, scale: 1 }}
+                            viewport={{ once: true }}
+                            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white text-xs font-bold tracking-widest uppercase mb-4 shadow-md shadow-violet-500/20"
+                        >
+                            <Sparkles size={14} />
+                            Update Terbaru
+                        </motion.div>
+                        <motion.h2
+                            initial={{ opacity: 0, y: 20 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            viewport={{ once: true }}
+                            className="text-3xl md:text-4xl font-bold text-stone-800 dark:text-stone-100 mb-4 font-heading"
+                        >
+                            Apa yang baru di Recap Chat?
+                        </motion.h2>
+                        <motion.p
+                            initial={{ opacity: 0 }}
+                            whileInView={{ opacity: 1 }}
+                            viewport={{ once: true }}
+                            className="text-lg text-stone-500 dark:text-stone-400 max-w-2xl mx-auto leading-relaxed"
+                        >
+                            Versi 3 hadir dengan banyak hal baru yang bikin pengalaman baca ulang chat kamu makin nyaman dan personal. Ini dia yang berubah:
+                        </motion.p>
+                    </div>
+
+                    {/* Timeline Changelog */}
+                    <div className="relative">
+                        {/* Vertical Line */}
+                        <div className="hidden md:block absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-violet-300 via-fuchsia-300 to-pink-300 dark:from-violet-700 dark:via-fuchsia-700 dark:to-pink-700" />
+
+                        <div className="space-y-6">
+                            {[
+                                {
+                                    version: "v3.0",
+                                    label: "Baru! 🎉",
+                                    labelColor: "from-violet-500 to-fuchsia-500",
+                                    title: "Support Instagram DM",
+                                    desc: "Sekarang kamu bisa upload file chat dari Instagram Direct Message (JSON export), nggak cuma WhatsApp lagi. Cocok banget buat yang aktif di dua platform sekaligus.",
+                                    icon: "📸",
+                                    bg: "from-violet-50 to-fuchsia-50 dark:from-violet-900/20 dark:to-fuchsia-900/20",
+                                    border: "border-violet-200 dark:border-violet-800/40"
+                                },
+                                {
+                                    version: "v3.0",
+                                    label: "Baru! 🎉",
+                                    labelColor: "from-pink-500 to-rose-500",
+                                    title: "Ruang Refleksi — Diskusi Lebih Dalam",
+                                    desc: "Di akhir rekap, kamu bisa buka sesi diskusi santai bareng AI. Gak perlu tahu mau nanya apa — AI yang bantu mulai. Cocok buat yang pengen refleksi lebih personal.",
+                                    icon: "🪞",
+                                    bg: "from-pink-50 to-rose-50 dark:from-pink-900/20 dark:to-rose-900/20",
+                                    border: "border-pink-200 dark:border-pink-800/40"
+                                },
+                                {
+                                    version: "v3.0",
+                                    label: "Diperbaiki ✨",
+                                    labelColor: "from-blue-500 to-cyan-500",
+                                    title: "Markdown AI Lebih Rapi & Enak Dibaca",
+                                    desc: "Jawaban dari AI sekarang tampil lebih bersih — nggak kaku kayak laporan, tapi mengalir kayak ngobrol sama temen. Pakai bold tipis dan paragraf yang napas.",
+                                    icon: "✍️",
+                                    bg: "from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20",
+                                    border: "border-blue-200 dark:border-blue-800/40"
+                                },
+                                {
+                                    version: "v3.0",
+                                    label: "Diperbaiki ✨",
+                                    labelColor: "from-emerald-500 to-teal-500",
+                                    title: "Indikator Sumber Chat (WA & Instagram)",
+                                    desc: "Sekarang kamu bisa langsung lihat chat ini datang dari mana — ada badge kecil yang tampil rapi di halaman rekap. Simpel tapi bikin lebih jelas.",
+                                    icon: "🏷️",
+                                    bg: "from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20",
+                                    border: "border-emerald-200 dark:border-emerald-800/40"
+                                },
+                                {
+                                    version: "v3.0",
+                                    label: "Lebih Cepat ⚡",
+                                    labelColor: "from-amber-500 to-orange-500",
+                                    title: "Performa & Rotasi API Key Lebih Stabil",
+                                    desc: "Proses analisis sekarang lebih cepat dan nggak gampang putus di tengah jalan. Kalau satu API key habis kuota, langsung otomatis ganti ke key berikutnya.",
+                                    icon: "🔄",
+                                    bg: "from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20",
+                                    border: "border-amber-200 dark:border-amber-800/40"
+                                },
+                            ].map((item, i) => (
+                                <motion.div
+                                    key={i}
+                                    initial={{ opacity: 0, x: -20 }}
+                                    whileInView={{ opacity: 1, x: 0 }}
+                                    viewport={{ once: true }}
+                                    transition={{ delay: i * 0.1 }}
+                                    className="md:pl-20 relative"
+                                >
+                                    {/* Timeline Dot */}
+                                    <div className="hidden md:flex absolute left-0 top-6 w-16 justify-center">
+                                        <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${item.labelColor} shadow-lg flex items-center justify-center text-sm shrink-0`}>
+                                            <span>{item.icon}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className={`bg-gradient-to-br ${item.bg} border ${item.border} rounded-3xl p-6 hover:shadow-lg transition-all group`}>
+                                        <div className="flex flex-wrap items-center gap-2 mb-3">
+                                            <span className={`inline-flex items-center px-3 py-1 rounded-full bg-gradient-to-r ${item.labelColor} text-white text-[11px] font-bold`}>
+                                                {item.label}
+                                            </span>
+                                            <span className="text-xs text-stone-400 dark:text-stone-500 font-mono">{item.version}</span>
+                                            <span className="md:hidden text-lg">{item.icon}</span>
+                                        </div>
+                                        <h3 className="text-lg font-bold text-stone-800 dark:text-stone-100 mb-2 group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
+                                            {item.title}
+                                        </h3>
+                                        <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
+                                            {item.desc}
+                                        </p>
+                                    </div>
+                                </motion.div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Bottom Note */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        className="mt-10 text-center"
+                    >
+                        <p className="text-sm text-stone-400 dark:text-stone-500">
+                            Masih terus berkembang. Kalau ada saran atau fitur yang kamu mau, feel free buat DM creator-nya! 💌
+                        </p>
+                    </motion.div>
+                </div>
+            </section>
+
             {/* CTA Section (Ajakan Terakhir) */}
             <section className="py-20 px-4">
+
                 <div className="max-w-4xl mx-auto bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/20 dark:to-pink-900/20 p-12 md:p-16 rounded-[3rem] shadow-xl border border-purple-200 dark:border-purple-800/30 text-center relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-pastel-primary/20 rounded-full blur-3xl"></div>
                     <Sparkles className="text-pastel-primary mx-auto mb-6" size={64} />
