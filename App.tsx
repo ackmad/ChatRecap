@@ -2198,9 +2198,9 @@ const App: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/60 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700 text-xs font-bold text-txt-sub dark:text-stone-400 mb-6 cursor-help" title={`Confidence: ${analysis.aiConfidence}`}>
-                            <div className={`w-2 h-2 rounded-full ${analysis.aiConfidence === 'high' ? 'bg-green-400' : 'bg-yellow-400'}`}></div>
-                            AI Confidence: {analysis.aiConfidence.toUpperCase()}
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/60 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700 text-xs font-bold text-txt-sub dark:text-stone-400 mb-6 cursor-help" title={`Confidence: ${analysis.aiConfidence ?? 'medium'}`}>
+                            <div className={`w-2 h-2 rounded-full ${(analysis.aiConfidence ?? 'medium') === 'high' ? 'bg-green-400' : 'bg-yellow-400'}`}></div>
+                            AI Confidence: {(analysis.aiConfidence ?? 'medium').toUpperCase()}
                         </div>
                         <h1 className="text-3xl md:text-5xl font-bold text-txt-main dark:text-stone-100 mb-4 tracking-tight leading-snug font-heading">{analysis.storyTitle}</h1>
                         <p className="text-lg text-txt-sub dark:text-stone-400 max-w-2xl mx-auto font-light leading-relaxed mb-8">"{analysis.summary}"</p>
