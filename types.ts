@@ -36,6 +36,7 @@ export interface Message {
   date: Date;
   sender: string;
   content: string;
+  platform?: 'whatsapp' | 'instagram'; // optional platform tag for multi-platform merging
 }
 
 export interface ChatData {

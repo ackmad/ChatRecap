@@ -167,6 +167,85 @@
     .dark ::-webkit-scrollbar-thumb:hover {
       background: #78716c;
     }
+
+    /* =====================================================
+       PERFORMANCE: CSS Animations (replaces framer-motion infinite loops)
+       GPU-composited: no JS thread involved
+    ====================================================== */
+    @keyframes blob-float-1 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(50px, 30px) scale(1.2); }
+    }
+    @keyframes blob-float-2 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(-30px, 50px) scale(1.1); }
+    }
+    @keyframes icon-float-1 {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      33% { transform: translateY(-25px) rotate(5deg); }
+      66% { transform: translateY(-12px) rotate(-5deg); }
+    }
+    @keyframes icon-float-2 {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(10px, 15px); }
+    }
+    @keyframes icon-float-3 {
+      0%, 100% { transform: translateY(0); opacity: 0.4; }
+      50% { transform: translateY(-20px); opacity: 0.6; }
+    }
+    @keyframes icon-float-4 {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50% { transform: translateY(30px) rotate(-10deg); }
+    }
+    @keyframes icon-float-5 {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(-5px, -15px); }
+    }
+    @keyframes icon-spin-slow {
+      0% { transform: scale(1) rotate(0deg); }
+      50% { transform: scale(1.2) rotate(180deg); }
+      100% { transform: scale(1) rotate(360deg); }
+    }
+    @keyframes particle-float {
+      0%, 100% { transform: translateY(0); opacity: 0; }
+      50% { transform: translateY(-40px); opacity: 0.8; }
+    }
+    @keyframes typing-dot {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 1; }
+    }
+    @keyframes logo-glow-shift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .blob-float-1 { animation: blob-float-1 8s ease-in-out infinite; will-change: transform; }
+    .blob-float-2 { animation: blob-float-2 10s ease-in-out infinite 1s; will-change: transform; }
+    .icon-float-1 { animation: icon-float-1 5s ease-in-out infinite; will-change: transform; }
+    .icon-float-2 { animation: icon-float-2 6s ease-in-out infinite 1s; will-change: transform; }
+    .icon-float-3 { animation: icon-float-3 7s ease-in-out infinite 2s; will-change: transform, opacity; }
+    .icon-float-4 { animation: icon-float-4 6s ease-in-out infinite 0.5s; will-change: transform; }
+    .icon-float-5 { animation: icon-float-5 5s ease-in-out infinite 1.5s; will-change: transform; }
+    .icon-spin-slow { animation: icon-spin-slow 12s linear infinite; will-change: transform; }
+    .particle-float-0 { animation: particle-float 3s ease-in-out infinite; will-change: transform, opacity; }
+    .particle-float-1 { animation: particle-float 4s ease-in-out infinite 0.8s; will-change: transform, opacity; }
+    .particle-float-2 { animation: particle-float 3.5s ease-in-out infinite 1.6s; will-change: transform, opacity; }
+    .particle-float-3 { animation: particle-float 5s ease-in-out infinite 0.3s; will-change: transform, opacity; }
+    .particle-float-4 { animation: particle-float 4.5s ease-in-out infinite 1.2s; will-change: transform, opacity; }
+    .typing-dot-1 { animation: typing-dot 1.2s ease-in-out infinite; }
+    .typing-dot-2 { animation: typing-dot 1.2s ease-in-out infinite 0.2s; }
+    .typing-dot-3 { animation: typing-dot 1.2s ease-in-out infinite 0.4s; }
+    .logo-glow-css { background-size: 200% 200%; animation: logo-glow-shift 3s linear infinite; }
+    .logo-glow-css-rev { background-size: 200% 200%; animation: logo-glow-shift 3s linear infinite reverse; }
+
+    /* Reduce motion for users who prefer it */
+    @media (prefers-reduced-motion: reduce) {
+      .blob-float-1, .blob-float-2,
+      .icon-float-1, .icon-float-2, .icon-float-3, .icon-float-4, .icon-float-5, .icon-spin-slow,
+      .particle-float-0, .particle-float-1, .particle-float-2, .particle-float-3, .particle-float-4,
+      .typing-dot-1, .typing-dot-2, .typing-dot-3,
+      .logo-glow-css, .logo-glow-css-rev { animation: none; }
+    }
   </style>
   <script type="importmap">
 {
@@ -193,6 +272,7 @@
 }
 </script>
   <link rel="stylesheet" href="/index.css">
+  <link rel="stylesheet" href="/performance-overrides.css">
 </head>
 
 <body>

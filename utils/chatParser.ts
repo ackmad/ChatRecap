@@ -298,3 +298,174 @@ export const parseWhatsAppChat = (text: string): ChatData => {
     balanceScore
   };
 };
+
+/**
+ * Build a fully-computed ChatData from an existing Message[] array.
+ * Use this when messages are already parsed (e.g. merged WhatsApp + Instagram)
+ * so that renderInsights gets all required fields like silencePeriods, participantStats, etc.
+ */
+export const buildChatDataFromMessages = (messages: Message[]): ChatData => {
+  const participantSet = new Set<string>(messages.map(m => m.sender));
+  const participantList = Array.from(participantSet);
+
+  const participantStats: Record<string, ParticipantStats> = {};
+  participantList.forEach(p => {
+    participantStats[p] = {
+      name: p,
+      messageCount: 0,
+      wordCount: 0,
+      averageLength: 0,
+      avgReplyTimeMinutes: 0,
+      initiationCount: 0,
+      emojiUsage: {},
+      vocabulary: {},
+      topEmojis: [],
+      topWords: [],
+      ghostingCount: 0,
+      longestGhostingDurationMinutes: 0,
+      fastestReplyMinutes: 999999,
+      activeHours: new Array(24).fill(0),
+      typingStyle: 'balanced'
+    };
+  });
+
+  const hourlyCount = new Array(24).fill(0);
+  const dailyCount: Record<string, number> = {};
+  const dailyBreakdown: Record<string, Record<string, number>> = {};
+  const replyTimes: Record<string, number[]> = {};
+  const silencePeriods: SilencePeriod[] = [];
+  const SILENCE_THRESHOLD_HOURS = 24 * 3;
+  const STOP_WORDS = new Set(['yang', 'dan', 'di', 'ke', 'dari', 'ini', 'itu', 'aku', 'kamu', 'dia', 'kita', 'mereka', 'apa', 'siapa', 'kapan', 'dimana', 'kenapa', 'bagaimana', 'ya', 'tidak', 'bukan', 'jangan', 'sudah', 'telah', 'sedang', 'akan', 'bisa', 'boleh', 'harus', 'mau', 'ingin', 'tapi', 'namun', 'jika', 'kalau', 'the', 'and', 'to', 'of', 'a', 'in', 'is', 'it', 'you', 'that', 'he', 'she', 'was', 'for', 'on', 'are', 'with', 'as', 'I', 'his', 'they', 'be', 'at', 'one', 'have', 'this', 'from', 'or', 'had', 'by', 'not', 'word', 'but', 'what', 'some', 'we', 'can', 'out', 'other', 'were', 'all', 'there', 'when', 'up', 'use', 'your', 'how', 'said', 'an', 'each', 'she']);
+  const EMOJI_REGEX = /[\u{1F300}-\u{1F9FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu;
+
+  const sortedMessages = [...messages].sort((a, b) => a.date.getTime() - b.date.getTime());
+  let lastMessage: Message | null = null;
+
+  sortedMessages.forEach(msg => {
+    const stats = participantStats[msg.sender];
+    if (!stats) return;
+
+    stats.messageCount++;
+    const words = msg.content.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 2);
+    stats.wordCount += words.length;
+    words.forEach(w => {
+      if (!STOP_WORDS.has(w)) {
+        stats.vocabulary![w] = (stats.vocabulary![w] || 0) + 1;
+      }
+    });
+
+    const emojis = msg.content.match(EMOJI_REGEX);
+    if (emojis) {
+      emojis.forEach(e => { stats.emojiUsage![e] = (stats.emojiUsage![e] || 0) + 1; });
+    }
+
+    const hour = msg.date.getHours();
+    hourlyCount[hour]++;
+    stats.activeHours![hour]++;
+
+    const dateKey = msg.date.toISOString().split('T')[0];
+    dailyCount[dateKey] = (dailyCount[dateKey] || 0) + 1;
+    if (!dailyBreakdown[dateKey]) dailyBreakdown[dateKey] = {};
+    dailyBreakdown[dateKey][msg.sender] = (dailyBreakdown[dateKey][msg.sender] || 0) + 1;
+
+    if (lastMessage) {
+      const timeDiffMs = msg.date.getTime() - lastMessage.date.getTime();
+      const timeDiffMinutes = timeDiffMs / (1000 * 60);
+
+      if (timeDiffMinutes > 24 * 60) {
+        silencePeriods.push({
+          startDate: lastMessage.date,
+          endDate: msg.date,
+          durationDays: Math.floor(timeDiffMinutes / (60 * 24)),
+          breaker: msg.sender
+        });
+      }
+
+      if (msg.sender !== lastMessage.sender) {
+        if (!replyTimes[msg.sender]) replyTimes[msg.sender] = [];
+        replyTimes[msg.sender].push(timeDiffMinutes);
+        if (timeDiffMinutes < (stats.fastestReplyMinutes || 999999)) {
+          stats.fastestReplyMinutes = timeDiffMinutes;
+        }
+        if (timeDiffMinutes > (SILENCE_THRESHOLD_HOURS * 60)) {
+          stats.ghostingCount = (stats.ghostingCount || 0) + 1;
+          if (timeDiffMinutes > (stats.longestGhostingDurationMinutes || 0)) {
+            stats.longestGhostingDurationMinutes = timeDiffMinutes;
+          }
+        }
+      }
+    }
+    lastMessage = msg;
+  });
+
+  participantList.forEach(p => {
+    const stats = participantStats[p];
+    const times = replyTimes[p] || [];
+    stats.avgReplyTimeMinutes = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0;
+    stats.averageLength = stats.messageCount ? Math.round(stats.wordCount / stats.messageCount) : 0;
+    stats.typingStyle = stats.averageLength < 5 ? 'short' : (stats.averageLength > 20 ? 'long' : 'balanced');
+    stats.topEmojis = Object.entries(stats.emojiUsage!).sort((a, b) => b[1] - a[1]).slice(0, 5).map(e => e[0]);
+    stats.topWords = Object.entries(stats.vocabulary!).sort((a, b) => b[1] - a[1]).slice(0, 5).map(w => w[0]);
+  });
+
+  silencePeriods.sort((a, b) => b.durationDays - a.durationDays);
+
+  let balanceScore = 50;
+  if (participantList.length === 2) {
+    const count1 = participantStats[participantList[0]]?.messageCount || 0;
+    const count2 = participantStats[participantList[1]]?.messageCount || 0;
+    const total = count1 + count2;
+    if (total > 0) balanceScore = Math.round((count2 / total) * 100);
+  }
+
+  const sortedDays = Object.entries(dailyCount).sort((a, b) => b[1] - a[1]);
+  const busiestDay = sortedDays.length > 0 ? { date: sortedDays[0][0], count: sortedDays[0][1] } : { date: '', count: 0 };
+  const busiestHour = hourlyCount.indexOf(Math.max(...hourlyCount));
+  const hourlyDistribution = hourlyCount.map((count, hour) => ({ hour, count }));
+  const dailyDistributionArray = Object.keys(dailyCount).sort().map(date => ({
+    date,
+    count: dailyCount[date],
+    breakdown: dailyBreakdown[date] || {}
+  }));
+
+  const activeDays = Object.keys(dailyCount).length;
+  let durationString = '0 hari';
+  let avgMessagesPerDay = 0;
+
+  if (sortedMessages.length > 1) {
+    const start = sortedMessages[0].date;
+    const end = sortedMessages[sortedMessages.length - 1].date;
+    const diffDays = Math.ceil(Math.abs(end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays > 0) avgMessagesPerDay = Math.round(sortedMessages.length / diffDays);
+    if (diffDays > 365) {
+      const y = Math.floor(diffDays / 365);
+      const m = Math.floor((diffDays % 365) / 30);
+      durationString = `${y} tahun ${m > 0 ? `${m} bulan` : ''}`;
+    } else if (diffDays > 30) {
+      durationString = `${Math.floor(diffDays / 30)} bulan ${diffDays % 30} hari`;
+    } else {
+      durationString = `${diffDays} hari`;
+    }
+  }
+
+  return {
+    participants: participantList,
+    messages: sortedMessages,
+    totalMessages: sortedMessages.length,
+    dateRange: {
+      start: sortedMessages.length > 0 ? sortedMessages[0].date : null,
+      end: sortedMessages.length > 0 ? sortedMessages[sortedMessages.length - 1].date : null,
+    },
+    durationString,
+    activeDays,
+    avgMessagesPerDay,
+    mediaCount: 0,
+    busiestDay,
+    busiestHour,
+    hourlyDistribution,
+    dailyDistribution: dailyDistributionArray,
+    participantStats,
+    silencePeriods,
+    balanceScore
+  };
+};

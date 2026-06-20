@@ -20,8 +20,8 @@ export const Button: React.FC<ButtonProps> = ({
   const baseStyle = "relative overflow-hidden px-6 py-3 rounded-2xl font-bold font-heading transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pastel-primary/50 disabled:opacity-50 disabled:cursor-not-allowed group";
 
   const variantStyles = {
-    // Primary: Custom shadow + gradient bg effect
-    primary: "bg-gradient-to-br from-pastel-primary via-purple-400 to-pink-400 text-white shadow-lg hover:shadow-xl shadow-pastel-primary/30 border border-white/20",
+    // Primary: Custom shadow + gradient bg effect with solid fallback
+    primary: "bg-purple-600 bg-gradient-to-br from-pastel-primary via-purple-400 to-pink-400 text-white shadow-lg hover:shadow-xl shadow-pastel-primary/30 border border-white/20",
     // Secondary: Softer look
     secondary: "bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-200 border border-stone-200 dark:border-stone-700 hover:border-pastel-primary dark:hover:border-pastel-primary hover:bg-stone-50 dark:hover:bg-stone-700 shadow-sm",
     // Ghost: No background

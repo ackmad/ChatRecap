@@ -74,8 +74,7 @@ export const LiveActivityWidget: React.FC<LiveActivityWidgetProps> = ({ stats })
       >
         {/* Indicator Dot */}
         <div className="relative flex h-3 w-3">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></span>
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
         </div>
 
         {/* Count & Label */}
@@ -96,10 +95,10 @@ export const LiveActivityWidget: React.FC<LiveActivityWidgetProps> = ({ stats })
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.95, filter: 'blur(10px)' }}
-            animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
-            exit={{ opacity: 0, y: 10, scale: 0.95, filter: 'blur(10px)' }}
-            transition={{ type: "spring", bounce: 0, duration: 0.2 }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.15 }}
             className="absolute top-full right-0 mt-3 w-72 bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-stone-100 dark:border-stone-800 overflow-hidden"
           >
             {/* Header */}
@@ -142,7 +141,7 @@ export const LiveActivityWidget: React.FC<LiveActivityWidgetProps> = ({ stats })
             {/* Footer / Connection Status */}
             <div className="px-4 py-2 bg-stone-50 dark:bg-stone-800/30 text-center border-t border-stone-50 dark:border-stone-800">
               <p className="text-[10px] text-stone-400 flex items-center justify-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                 Live Data Connection Active
               </p>
             </div>

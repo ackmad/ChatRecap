@@ -1,0 +1,72 @@
+/* ========================================
+   CORE STYLING & UTILITIES
+   Custom animations, glassmorphism, and ambient gradients
+   ======================================== */
+
+/* Smooth scrolling for anchor links */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Glassmorphism Styles (with GPU compositing hints) */
+.glass-panel {
+  background-color: rgba(255, 255, 255, 0.7) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+}
+
+.dark .glass-panel {
+  background-color: rgba(28, 25, 23, 0.7) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Modern Card Hover Effects */
+.card-hover-effect {
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.card-hover-effect:hover {
+  transform: translateY(-6px) scale(1.01);
+  box-shadow: 0 20px 40px -15px rgba(184, 169, 230, 0.25);
+}
+
+.dark .card-hover-effect:hover {
+  box-shadow: 0 20px 40px -15px rgba(139, 92, 246, 0.15);
+}
+
+/* Floating animation for micro-interactions */
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+/* Ambient glow orb backgrounds */
+.glow-orb {
+  filter: blur(80px);
+  opacity: 0.15;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+}
+
+.dark .glow-orb {
+  opacity: 0.25;
+}
+
+/* Custom Shine animation for CTA buttons */
+@keyframes shine {
+  100% {
+    transform: translateX(100%) skewX(12deg);
+  }
+}
+
+.group-hover\:animate-shine {
+  animation: shine 0.75s ease-in-out;
+}

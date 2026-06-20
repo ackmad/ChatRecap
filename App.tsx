@@ -1,19 +1,19 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Upload, FileText, MessageSquare, ArrowRight, ShieldCheck, RefreshCw, Send, Sparkles, Clock, Calendar, MessageCircle, Heart, User, BookOpen, Feather, Cpu, Layers, ArrowLeft, Coffee, Sun, Moon, Minus, Plus, Hourglass, Tag, Scale, AlertCircle, Quote, ChevronLeft, ChevronRight, Info, BarChart2, TrendingUp, Music, Bot, Lock, CheckCircle, HelpCircle, File, Smartphone, Users, Eye, Brain, Terminal, XCircle, AlertTriangle, Download, Share2, Image as ImageIcon, Grid, Layout as LayoutIcon, Type, X, Zap, Search, Menu, ChevronDown, Smile } from 'lucide-react';
-import { useRoomPresence } from './hooks/useRoomPresence';
-import { RoomPresenceBar } from './components/RoomPresenceBar';
-import { PresenceToast } from './components/PresenceToast';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Upload, FileText, MessageSquare, ArrowRight, ShieldCheck, RefreshCw, Send, Sparkles, Clock, Calendar, MessageCircle, Heart, User, BookOpen, Feather, Cpu, Layers, ArrowLeft, Coffee, Sun, Moon, Minus, Plus, Hourglass, Tag, Scale, AlertCircle, Quote, ChevronLeft, ChevronRight, Info, BarChart2, TrendingUp, Music, Bot, Lock, CheckCircle, HelpCircle, File, Smartphone, Users, Eye, Brain, Terminal, XCircle, AlertTriangle, Download, Share2, Image as ImageIcon, Grid, Layout as LayoutIcon, Type, X, Zap, Search, Menu, ChevronDown, Smile, Settings } from 'lucide-react';
+// Removed presence imports
+import { motion, AnimatePresence, useInView } from 'framer-motion';
 import { AreaChart, Area, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import ReactMarkdown from 'react-markdown';
-import { parseWhatsAppChat } from './utils/chatParser';
-import { analyzeChatWithGemini, createChatSession, sendChatMessageWithRetry } from './services/geminiService';
+import { parseWhatsAppChat, buildChatDataFromMessages } from './utils/chatParser';
+import { analyzeChatWithGemini, createChatSession, sendChatMessageWithRetry, setRuntimeApiKeys } from './services/geminiService';
 import { AppState, ChatData, AnalysisResult, ChatMessage, Message, RelationshipType } from './types';
 import { Layout } from './components/Layout';
 import { Button } from './components/Button';
 import { AdvancedStoryGenerator } from './components/AdvancedStoryGenerator';
 import { StoryHighlight } from './components/StoryHighlight';
 import { PDFGenerator } from './components/PDFGenerator';
+import { SettingsModal, ReadingStrategy } from './components/SettingsModal';
+import { parseInstagramJSON, mergeMessages, getConversationMetadata } from './utils/instagramParser';
 import { ChatSession } from "@google/generative-ai";
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -171,17 +171,17 @@ const CustomChartTooltip = ({ active, payload, label }: any) => {
 
 // Markdown Message Component (Better Formatting)
 const MarkdownMessage = ({ text }: { text: string }) => (
-    <div className="markdown-content text-sm leading-relaxed space-y-2 break-words">
+    <div className="markdown-content leading-7 text-stone-800 dark:text-stone-200 break-words">
         <ReactMarkdown
             components={{
-                strong: ({ node, ...props }) => <span className="font-bold text-stone-900 dark:text-stone-100 bg-stone-100 dark:bg-stone-800 px-1 rounded-sm" {...props} />,
+                strong: ({ node, ...props }) => <span className="font-semibold text-stone-900 dark:text-white" {...props} />,
                 em: ({ node, ...props }) => <span className="italic text-stone-700 dark:text-stone-300" {...props} />,
-                ul: ({ node, ...props }) => <ul className="list-disc list-outside ml-4 space-y-1 my-2" {...props} />,
-                ol: ({ node, ...props }) => <ol className="list-decimal list-outside ml-4 space-y-1 my-2" {...props} />,
+                ul: ({ node, ...props }) => <ul className="list-disc list-outside ml-5 space-y-2 my-4" {...props} />,
+                ol: ({ node, ...props }) => <ol className="list-decimal list-outside ml-5 space-y-2 my-4" {...props} />,
                 li: ({ node, ...props }) => <li className="pl-1" {...props} />,
-                p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
-                blockquote: ({ node, ...props }) => <blockquote className="border-l-4 border-pastel-primary pl-3 italic text-stone-500 my-2 bg-stone-50 dark:bg-stone-800/50 py-1 pr-2 rounded-r" {...props} />,
-                code: ({ node, ...props }) => <code className="bg-stone-100 dark:bg-stone-800 px-1 py-0.5 rounded font-mono text-xs text-pink-500" {...props} />,
+                p: ({ node, ...props }) => <p className="mb-4 last:mb-0" {...props} />,
+                blockquote: ({ node, ...props }) => <blockquote className="border-l-4 border-stone-300 dark:border-stone-600 pl-4 italic text-stone-600 dark:text-stone-400 my-4" {...props} />,
+                code: ({ node, ...props }) => <code className="bg-stone-100 dark:bg-stone-800 px-1.5 py-0.5 rounded-md font-mono text-[13px] text-pink-600 dark:text-pink-400" {...props} />,
             }}
         >
             {text}
@@ -812,6 +812,14 @@ const App: React.FC = () => {
     const [errorDetails, setErrorDetails] = useState<{ userMsg: string, technicalMsg: string } | null>(null);
     const [showStory, setShowStory] = useState(false);
     const [showHighlight, setShowHighlight] = useState(false);
+    
+    // NEW FEATURES STATE
+    const [apiKeys, setApiKeys] = useState<string[]>([]);
+    const [readingStrategy, setReadingStrategy] = useState<ReadingStrategy>('smart-sampling');
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [isBottomInView, setIsBottomInView] = useState(false);
+    const [whatsappMessages, setWhatsappMessages] = useState<Message[]>([]);
+    const [instagramMessages, setInstagramMessages] = useState<Message[]>([]);
 
     // --- REALTIME ANALYTICS SETUP ---
     // Calculate current page category for Analytics
@@ -833,12 +841,11 @@ const App: React.FC = () => {
         }
     }, [appState]);
 
-    // Single Hook Call for Global Analytics
-    const { globalStats, presenceState, isConnected } = useRoomPresence(null, {}, pageName as any);
-
-    // Alias variables for UI compatibility
-    const globalPresence = presenceState; // For landing page badge
-    const updateMyStatus = (_status?: string) => { }; // No-op since server is global-only
+    // Alias variables for UI compatibility without presence
+    const isConnected = false;
+    const globalPresence = { onlineCount: 0 };
+    const globalStats = { landing: 0, creating: 0, result: 0, total: 0 };
+    const updateMyStatus = (_status?: string) => { }; // No-op
 
 
     // 4. Scroll Detection to update status
@@ -881,6 +888,26 @@ const App: React.FC = () => {
         }
     }, [isDarkMode]);
 
+    // Load settings from localStorage on mount
+    useEffect(() => {
+        const savedApiKeys = localStorage.getItem('chatRecapApiKeys');
+        const savedStrategy = localStorage.getItem('chatRecapStrategy');
+        
+        if (savedApiKeys) {
+            try {
+                const keys = JSON.parse(savedApiKeys);
+                setApiKeys(keys);
+                setRuntimeApiKeys(keys);
+            } catch (e) {
+                console.error('Failed to load API keys from localStorage');
+            }
+        }
+        
+        if (savedStrategy) {
+            setReadingStrategy(savedStrategy as ReadingStrategy);
+        }
+    }, []);
+
     // Show donation popup on first visit
     useEffect(() => {
         const hasSeenDonation = localStorage.getItem('hasSeenDonation');
@@ -897,6 +924,19 @@ const App: React.FC = () => {
     };
 
     const toggleTheme = () => setIsDarkMode(!isDarkMode);
+    
+    // Handler for saving settings
+    const handleSaveSettings = (keys: string[], strategy: ReadingStrategy) => {
+        setApiKeys(keys);
+        setReadingStrategy(strategy);
+        setRuntimeApiKeys(keys);
+        
+        // Save to localStorage
+        localStorage.setItem('chatRecapApiKeys', JSON.stringify(keys));
+        localStorage.setItem('chatRecapStrategy', strategy);
+        
+        console.log(`✅ Settings saved: ${keys.length} API keys, strategy: ${strategy}`);
+    };
 
     // Helper to add logs safely
     const addStatusLog = (log: string) => {
@@ -911,52 +951,137 @@ const App: React.FC = () => {
             return;
         }
 
-        setAppState(AppState.PROCESSING);
-        setIsAnalysisComplete(false);
-        setErrorDetails(null);
-        setAiStatusLogs([]); // Reset logs
-
         const reader = new FileReader();
         reader.onload = async (e) => {
             const text = e.target?.result as string;
             try {
-                addStatusLog("📂 Membaca file chat lokal...");
+                addStatusLog("📂 Membaca file WhatsApp...");
                 const parsedData = parseWhatsAppChat(text);
 
                 if (parsedData.totalMessages === 0) {
                     throw { userMsg: "File chat kosong atau format tidak dikenali.", technicalMsg: "Parsed 0 messages. Regex mismatch." };
                 }
-                addStatusLog(`✅ Chat terbaca: ${parsedData.totalMessages} pesan`);
-                setChatData(parsedData);
+                addStatusLog(`✅ WhatsApp: ${parsedData.totalMessages} pesan terbaca`);
+                // Tag all WA messages with platform source
+                const taggedMessages = parsedData.messages.map(m => ({ ...m, platform: 'whatsapp' as const }));
+                setWhatsappMessages(taggedMessages);
 
-                // Pick random messages for evidence snippet
-                if (parsedData.messages.length > 5) {
-                    const startIdx = Math.floor(Math.random() * (parsedData.messages.length - 5));
-                    setEvidenceMessages(parsedData.messages.slice(startIdx, startIdx + 3));
-                }
+                // Don't start analysis yet, wait for user to click "Start Analysis"
+                // Store pre-computed ChatData for WA-only quick preview
+                setChatData({ ...parsedData, messages: taggedMessages });
 
-                // Perform analysis on client-side using API Key with Status Callback
-                const result = await analyzeChatWithGemini(parsedData.messages, addStatusLog);
-
-                setAnalysis(result);
-                setChatSession(createChatSession(parsedData.messages));
-
-                setIsAnalysisComplete(true);
             } catch (err: any) {
                 console.error(err);
-                // If error thrown is our structured error
                 if (err.userMsg) {
                     setErrorDetails(err);
                 } else {
                     setErrorDetails({
-                        userMsg: "Gagal memproses data.",
+                        userMsg: "Gagal memproses data WhatsApp.",
                         technicalMsg: err.message || JSON.stringify(err)
                     });
                 }
-                // Keep user on PROCESSING state to show error UI
             }
         };
         reader.readAsText(file);
+    };
+
+    const handleInstagramUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        
+        if (!file.name.endsWith('.json')) {
+            alert('Format file harus JSON (message_1.json dari Instagram export)');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const text = e.target?.result as string;
+            try {
+                addStatusLog("📱 Membaca file Instagram JSON...");
+                const igMessages = parseInstagramJSON(text);
+                
+                if (igMessages.length === 0) {
+                    throw new Error('File Instagram kosong atau format tidak valid');
+                }
+                
+                addStatusLog(`✅ Instagram: ${igMessages.length} pesan terbaca`);
+                setInstagramMessages(igMessages);
+                
+            } catch (err: any) {
+                console.error(err);
+                alert(`Gagal membaca file Instagram: ${err.message}`);
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    const handleStartAnalysis = async () => {
+        if (whatsappMessages.length === 0 && instagramMessages.length === 0) {
+            alert('Upload minimal 1 file chat terlebih dahulu!');
+            return;
+        }
+
+        setAppState(AppState.PROCESSING);
+        setIsAnalysisComplete(false);
+        setErrorDetails(null);
+        setAiStatusLogs([]); // Reset logs
+
+        try {
+            // Merge messages if both platforms exist
+            let allMessages: Message[] = [];
+            let isMultiPlatform = false;
+            
+            if (whatsappMessages.length > 0 && instagramMessages.length > 0) {
+                isMultiPlatform = true;
+                addStatusLog("🔄 Menggabungkan chat WhatsApp & Instagram secara kronologis...");
+                allMessages = mergeMessages(whatsappMessages, instagramMessages);
+                const metadata = getConversationMetadata(whatsappMessages, instagramMessages);
+                addStatusLog(`📱 WhatsApp: ${metadata.whatsappMessages} pesan | 💬 Instagram: ${metadata.instagramMessages} pesan`);
+                addStatusLog(`✅ Gabungan: ${metadata.totalMessages} pesan diurutkan berdasarkan waktu dari ${metadata.startDate.toLocaleDateString('id-ID')} s/d ${metadata.endDate.toLocaleDateString('id-ID')}`);
+            } else if (whatsappMessages.length > 0) {
+                allMessages = whatsappMessages;
+                addStatusLog(`📱 WhatsApp: ${whatsappMessages.length} pesan siap dianalisis`);
+            } else {
+                allMessages = instagramMessages;
+                addStatusLog(`💬 Instagram: ${instagramMessages.length} pesan siap dianalisis`);
+            }
+
+            // Build fully-computed ChatData (with silencePeriods, participantStats, etc.)
+            // This ensures renderInsights doesn't crash on undefined fields
+            const combinedData = buildChatDataFromMessages(allMessages);
+
+            setChatData(combinedData);
+
+            // Pick random messages for evidence snippet
+            if (allMessages.length > 5) {
+                const startIdx = Math.floor(Math.random() * (allMessages.length - 5));
+                setEvidenceMessages(allMessages.slice(startIdx, startIdx + 3));
+            }
+
+            // Perform analysis with custom API keys and reading strategy
+            const result = await analyzeChatWithGemini(
+                allMessages, 
+                addStatusLog,
+                readingStrategy,
+                apiKeys.length > 0 ? apiKeys : undefined
+            );
+
+            setAnalysis(result);
+            setChatSession(createChatSession(allMessages));
+
+            setIsAnalysisComplete(true);
+        } catch (err: any) {
+            console.error(err);
+            if (err.userMsg) {
+                setErrorDetails(err);
+            } else {
+                setErrorDetails({
+                    userMsg: "Gagal memproses data.",
+                    technicalMsg: err.message || JSON.stringify(err)
+                });
+            }
+        }
     };
 
     const onLoadingTransitionDone = () => {
@@ -1034,69 +1159,7 @@ const App: React.FC = () => {
                 <ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
             </div>
 
-            {/* Fixed Top-Left Online Indicator */}
-            <div className="fixed top-24 left-8 z-[60]">
-                <div className="relative group">
-                    <button
-                        onClick={() => setShowStatsPopup(!showStatsPopup)}
-                        onMouseEnter={() => setShowStatsPopup(true)}
-                        onMouseLeave={() => setShowStatsPopup(false)}
-                        className="p-2 rounded-full bg-white/50 dark:bg-stone-800/50 hover:bg-white dark:hover:bg-stone-700 transition-all text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-stone-700 shadow-sm flex items-center justify-center relative backdrop-blur-md"
-                    >
-                        <Users size={18} className={isConnected && globalPresence.onlineCount > 0 ? "text-green-500" : "text-stone-400"} />
-                        {isConnected && globalPresence.onlineCount > 0 && (
-                            <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500 text-[8px] text-white justify-center items-center flex">{globalPresence.onlineCount}</span>
-                            </span>
-                        )}
-                    </button>
 
-                    <AnimatePresence>
-                        {showStatsPopup && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                className="absolute top-full left-0 mt-3 w-56 bg-white dark:bg-stone-900 rounded-2xl shadow-xl border border-stone-200 dark:border-stone-800 p-5 z-50 transform origin-top-left"
-                            >
-                                <div className="flex items-center justify-between mb-4 border-b border-stone-100 dark:border-stone-800 pb-3">
-                                    <div className="flex items-center gap-2">
-                                        <div className="relative">
-                                            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-                                        </div>
-                                        <span className="text-xs font-bold text-stone-700 dark:text-stone-200 uppercase tracking-wider">Live Users</span>
-                                    </div>
-                                    <span className="text-[10px] font-mono text-stone-400">{isConnected ? 'ONLINE' : 'OFFLINE'}</span>
-                                </div>
-
-                                <div className="space-y-3">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-xs text-stone-600 dark:text-stone-400 flex items-center gap-2"><Sparkles size={12} className="text-purple-400" /> Landing Page</span>
-                                        <span className="text-xs font-bold font-mono bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded text-stone-600 dark:text-stone-300">{globalStats.landing}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-xs text-stone-600 dark:text-stone-400 flex items-center gap-2"><Zap size={12} className="text-amber-400" /> Creating Recap</span>
-                                        <span className="text-xs font-bold font-mono bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded text-stone-600 dark:text-stone-300">{globalStats.creating}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-xs text-stone-600 dark:text-stone-400 flex items-center gap-2"><BookOpen size={12} className="text-pink-400" /> Reading Result</span>
-                                        <span className="text-xs font-bold font-mono bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded text-stone-600 dark:text-stone-300">{globalStats.result}</span>
-                                    </div>
-                                </div>
-
-                                <div className="mt-4 pt-3 border-t border-stone-100 dark:border-stone-800 flex justify-between items-center">
-                                    <span className="text-[10px] text-stone-400 font-medium">Total Online</span>
-                                    <span className="text-sm font-bold text-green-600 dark:text-green-400 font-mono">{globalStats.total}</span>
-                                </div>
-
-                                {/* Arrow */}
-                                <div className="absolute -top-1.5 left-3 w-3 h-3 bg-white dark:bg-stone-900 border-t border-l border-stone-200 dark:border-stone-800 transform rotate-45"></div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </div>
-            </div>
 
             {/* Navbar Fixed */}
             <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 dark:bg-stone-900/90 backdrop-blur-md border-b border-stone-200 dark:border-stone-800 px-6 py-4 shadow-sm">
@@ -1238,9 +1301,12 @@ const App: React.FC = () => {
                     />
                 ))}
 
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-6 inline-block">
-                    <span className="px-4 py-1.5 rounded-full bg-white/60 dark:bg-stone-800/60 border border-pastel-primary/30 text-pastel-primary text-sm font-bold shadow-sm backdrop-blur-sm">
-                        ✨ Ruang Refleksi Digital
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-6 inline-flex items-center gap-3">
+                    <span className="px-3 py-1 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] sm:text-xs font-black tracking-widest shadow-md shadow-pink-500/20 uppercase animate-pulse">
+                        🚀 NEW VERSION 3
+                    </span>
+                    <span className="px-4 py-1.5 rounded-full bg-white/60 dark:bg-stone-800/60 border border-pastel-primary/30 text-pastel-primary text-xs sm:text-sm font-bold shadow-sm backdrop-blur-sm">
+                        ✨ Multi-Platform & Ruang Refleksi
                     </span>
                 </motion.div>
 
@@ -1716,78 +1782,176 @@ const App: React.FC = () => {
         </div>
     );
 
-    const renderStudio = () => (
-        <Layout title="Mulai Analisis Chat Kamu" className="flex flex-col min-h-screen">
-            {/* Fixed Back Button & Theme Toggle */}
-            <div className="fixed top-4 left-4 right-4 z-50 flex items-center justify-between max-w-4xl mx-auto">
-                <Button variant="ghost" onClick={() => setAppState(AppState.LANDING)} className="!px-4 !py-2 text-sm flex items-center gap-2 bg-white/80 dark:bg-stone-800/80 backdrop-blur-md shadow-sm">
-                    <ArrowLeft size={16} />
-                    Kembali
-                </Button>
-                <ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
-            </div>
+    const renderStudio = () => {
+        const hasWhatsApp = whatsappMessages.length > 0;
+        const hasInstagram = instagramMessages.length > 0;
+        const isReadyForAnalysis = hasWhatsApp || hasInstagram;
 
-            <div className="flex-1 w-full max-w-4xl mx-auto flex flex-col items-center mt-16">
-                <div className="text-center mb-10">
-                    <p className="text-stone-500 dark:text-stone-400">Upload file chat WhatsApp, lalu Recap Chat akan menyusun rangkuman dan insight dari percakapan tersebut.</p>
+        return (
+            <Layout title="Mulai Analisis Chat Kamu" className="flex flex-col min-h-screen">
+                {/* Fixed Back Button & Theme Toggle */}
+                <div className="fixed top-4 left-4 right-4 z-50 flex items-center justify-between max-w-4xl mx-auto">
+                    <Button variant="ghost" onClick={() => setAppState(AppState.LANDING)} className="!px-4 !py-2 text-sm flex items-center gap-2 bg-white/80 dark:bg-stone-800/80 backdrop-blur-md shadow-sm">
+                        <ArrowLeft size={16} />
+                        Kembali
+                    </Button>
+                    <div className="flex items-center gap-2">
+                        <Button variant="ghost" onClick={() => setShowSettingsModal(true)} className="!px-4 !py-2 text-sm flex items-center gap-2 bg-white/80 dark:bg-stone-800/80 backdrop-blur-md shadow-sm">
+                            <Settings size={16} className="text-stone-600 dark:text-stone-300" />
+                            Settings
+                        </Button>
+                        <ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
+                    </div>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-8 w-full">
-                    {/* Left: Tutorial Wizard */}
-                    <div className="bg-white/70 dark:bg-stone-800/70 backdrop-blur-md p-8 rounded-3xl border border-white dark:border-stone-700 shadow-sm h-fit">
-                        <div className="flex items-center gap-3 mb-6">
-                            <BookOpen className="text-pastel-primary" />
-                            <h3 className="font-bold text-lg text-stone-800 dark:text-stone-200">Cara Export Chat</h3>
-                        </div>
+                <div className="flex-1 w-full max-w-4xl mx-auto flex flex-col items-center mt-16">
+                    <div className="text-center mb-10">
+                        <p className="text-stone-500 dark:text-stone-400">Upload file chat WhatsApp atau Instagram, lalu Recap Chat akan menyusun rangkuman dan insight dari percakapan tersebut.</p>
+                    </div>
 
-                        <div className="space-y-6">
-                            <div className="flex gap-4 border-b border-stone-200 dark:border-stone-700 pb-4">
-                                <div className="flex-1 text-center">
-                                    <h4 className="font-bold text-stone-800 dark:text-stone-200 text-sm mb-2">Android / iOS</h4>
-                                    <ol className="text-left text-sm text-stone-600 dark:text-stone-400 space-y-2 list-decimal pl-4">
-                                        <li>Buka chat di WhatsApp.</li>
-                                        <li>Klik nama kontak / titik tiga di pojok kanan.</li>
-                                        <li>Pilih <strong>More &gt; Export Chat</strong>.</li>
-                                        <li>Pilih <strong>Without Media</strong> (Penting!).</li>
-                                        <li>Simpan file .txt ke HP/Laptop kamu.</li>
-                                    </ol>
+                    <div className="grid md:grid-cols-2 gap-8 w-full">
+                        {/* Left: Tutorial Wizard */}
+                        <div className="bg-white/70 dark:bg-stone-800/70 backdrop-blur-md p-8 rounded-3xl border border-white dark:border-stone-700 shadow-sm h-fit">
+                            <div className="flex items-center gap-3 mb-6">
+                                <BookOpen className="text-pastel-primary" />
+                                <h3 className="font-bold text-lg text-stone-800 dark:text-stone-200">Cara Export Chat</h3>
+                            </div>
+
+                            <div className="space-y-6">
+                                <div className="flex gap-4 border-b border-stone-200 dark:border-stone-700 pb-4">
+                                    <div className="flex-1 text-center">
+                                        <h4 className="font-bold text-stone-800 dark:text-stone-200 text-sm mb-2">Android / iOS (WhatsApp)</h4>
+                                        <ol className="text-left text-sm text-stone-600 dark:text-stone-400 space-y-2 list-decimal pl-4">
+                                            <li>Buka chat di WhatsApp.</li>
+                                            <li>Klik nama kontak / titik tiga di pojok kanan.</li>
+                                            <li>Pilih <strong>More &gt; Export Chat</strong>.</li>
+                                            <li>Pilih <strong>Without Media</strong> (Penting!).</li>
+                                            <li>Simpan file .txt ke HP/Laptop kamu.</li>
+                                        </ol>
+                                    </div>
+                                </div>
+                                <div className="flex gap-4 border-b border-stone-200 dark:border-stone-700 pb-4">
+                                    <div className="flex-1 text-center">
+                                        <h4 className="font-bold text-stone-800 dark:text-stone-200 text-sm mb-2">Instagram JSON</h4>
+                                        <ol className="text-left text-sm text-stone-600 dark:text-stone-400 space-y-2 list-decimal pl-4">
+                                            <li>Instagram &gt; Settings &gt; Download Your Info.</li>
+                                            <li>Pilih format <strong>JSON</strong>.</li>
+                                            <li>Temukan file: <code>message_1.json</code> di folder inbox.</li>
+                                        </ol>
+                                    </div>
+                                </div>
+                                <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl border border-amber-100 dark:border-amber-900/30 flex gap-3">
+                                    <Info className="text-amber-500 shrink-0" size={20} />
+                                    <p className="text-xs text-amber-700 dark:text-amber-400">Tips: Kamu bisa menggabungkan chat WhatsApp (.txt) dan Instagram (.json) untuk analisis multi-platform!</p>
                                 </div>
                             </div>
-                            <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl border border-amber-100 dark:border-amber-900/30 flex gap-3">
-                                <Info className="text-amber-500 shrink-0" size={20} />
-                                <p className="text-xs text-amber-700 dark:text-amber-400">Tips: pilih export <strong>tanpa media</strong> supaya proses lebih cepat.</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Right: Upload Area */}
-                    <div className="flex flex-col gap-6">
-                        <div className="bg-white/70 dark:bg-stone-800/70 backdrop-blur-md p-8 rounded-3xl border border-white dark:border-stone-700 shadow-sm flex-1 flex flex-col justify-center text-center relative group hover:border-pastel-primary transition-all">
-                            <input type="file" accept=".txt" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                            <div className="w-20 h-20 bg-stone-100 dark:bg-stone-700 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform shadow-inner">
-                                <Upload className="text-stone-400 group-hover:text-pastel-primary" size={32} />
-                            </div>
-                            <h3 className="font-bold text-stone-800 dark:text-stone-200 mb-1">📂 Drop file chat kamu di sini</h3>
-                            <p className="text-xs text-stone-500 mb-6">atau klik untuk upload (.txt)</p>
-
-                            <div className="flex items-center justify-center gap-2 text-[10px] text-stone-400 uppercase tracking-widest font-bold">
-                                ✨ Scan & Buat Recap
-                            </div>
                         </div>
 
-                        {errorDetails && errorDetails.userMsg && (
-                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-xl border border-red-100 dark:border-red-900/30 text-center">
-                                {errorDetails.userMsg}
-                            </motion.div>
-                        )}
+                        {/* Right: Upload Area */}
+                        <div className="flex flex-col gap-6 w-full">
+                            {/* Current Settings Display */}
+                            <div className="bg-white/50 dark:bg-stone-800/50 backdrop-blur-md p-4 rounded-2xl border border-white/50 dark:border-stone-700/50 shadow-sm flex items-center justify-between text-xs">
+                                <div className="space-y-1">
+                                    <div className="font-bold text-stone-700 dark:text-stone-300 uppercase tracking-wide flex items-center gap-1.5">
+                                        <Settings size={12} className="text-pastel-primary" />
+                                        Konfigurasi Aktif
+                                    </div>
+                                    <div className="text-stone-500 dark:text-stone-400 font-mono">
+                                        🔑 API Keys: <span className="text-pastel-primary font-bold">{apiKeys.length > 0 ? `${apiKeys.length} Custom` : 'Default (.env)'}</span>
+                                    </div>
+                                    <div className="text-stone-500 dark:text-stone-400 capitalize">
+                                        📖 Strategi: <span className="text-pastel-primary font-bold font-mono">{readingStrategy.replace('-', ' ')}</span>
+                                    </div>
+                                </div>
+                                <Button variant="ghost" onClick={() => setShowSettingsModal(true)} className="!px-3 !py-1.5 !text-[11px] font-bold border border-stone-200 dark:border-stone-700 flex items-center gap-1 hover:bg-stone-50 dark:hover:bg-stone-850">
+                                    <Settings size={12} />
+                                    Ubah
+                                </Button>
+                            </div>
 
-                        <p className="text-[10px] text-stone-400 text-center">Chat kamu hanya diproses sementara selama sesi ini. Tidak disimpan permanen.</p>
+                            {/* WhatsApp Upload Zone */}
+                            <div className="relative overflow-hidden bg-white/70 dark:bg-stone-800/70 backdrop-blur-md p-6 rounded-3xl border border-white dark:border-stone-700 shadow-sm hover:border-emerald-500/50 transition-all flex flex-col items-center justify-center text-center min-h-[160px]">
+                                {!hasWhatsApp ? (
+                                    <>
+                                        <input type="file" accept=".txt" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                                        <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-950/30 rounded-full flex items-center justify-center mb-3">
+                                            <Upload className="text-emerald-500" size={20} />
+                                        </div>
+                                        <h4 className="font-bold text-sm text-stone-800 dark:text-stone-200 mb-0.5">📱 WhatsApp Chat (.txt)</h4>
+                                        <p className="text-xs text-stone-500">Drop chat WhatsApp di sini atau klik untuk upload</p>
+                                    </>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center w-full">
+                                        <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/50 rounded-full flex items-center justify-center mb-3 text-emerald-500 font-bold">
+                                            ✓
+                                        </div>
+                                        <h4 className="font-bold text-sm text-stone-800 dark:text-stone-200 mb-1">📱 WhatsApp Chat Terunggah</h4>
+                                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-650 dark:text-emerald-400 border border-emerald-500/20 mb-3">
+                                            {whatsappMessages.length.toLocaleString()} pesan terdeteksi
+                                        </span>
+                                        <Button variant="ghost" onClick={() => { setWhatsappMessages([]); setChatData(null); }} className="!px-3 !py-1 text-xs text-red-500 border border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-950/20">
+                                            Hapus
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Instagram Upload Zone (Optional) */}
+                            <div className="relative overflow-hidden bg-white/70 dark:bg-stone-800/70 backdrop-blur-md p-6 rounded-3xl border border-white dark:border-stone-700 shadow-sm hover:border-pink-500/50 transition-all flex flex-col items-center justify-center text-center min-h-[160px]">
+                                {!hasInstagram ? (
+                                    <>
+                                        <input type="file" accept=".json" onChange={handleInstagramUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                                        <div className="w-12 h-12 bg-pink-50 dark:bg-pink-950/30 rounded-full flex items-center justify-center mb-3">
+                                            <Upload className="text-pink-500" size={20} />
+                                        </div>
+                                        <h4 className="font-bold text-sm text-stone-800 dark:text-stone-200 mb-0.5">💬 Instagram Chat (Optional)</h4>
+                                        <p className="text-xs text-stone-500">Drop message_1.json Instagram di sini atau klik untuk upload</p>
+                                    </>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center w-full">
+                                        <div className="w-12 h-12 bg-pink-100 dark:bg-pink-900/50 rounded-full flex items-center justify-center mb-3 text-pink-500 font-bold">
+                                            ✓
+                                        </div>
+                                        <h4 className="font-bold text-sm text-stone-800 dark:text-stone-200 mb-1">💬 Instagram Chat Terunggah</h4>
+                                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-pink-550/15 text-pink-650 dark:text-pink-400 border border-pink-500/20 mb-3">
+                                            {instagramMessages.length.toLocaleString()} pesan terdeteksi
+                                        </span>
+                                        <Button variant="ghost" onClick={() => setInstagramMessages([])} className="!px-3 !py-1 text-xs text-red-500 border border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-950/20">
+                                            Hapus
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {errorDetails && errorDetails.userMsg && (
+                                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-xl border border-red-100 dark:border-red-900/30 text-center">
+                                    {errorDetails.userMsg}
+                                </motion.div>
+                            )}
+
+                            {/* CTA Mulai Analisis */}
+                            <div className="mt-2">
+                                <Button 
+                                    onClick={handleStartAnalysis} 
+                                    disabled={!isReadyForAnalysis}
+                                    className={`w-full py-4 text-base font-bold shadow-xl transition-all ${
+                                        isReadyForAnalysis 
+                                        ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:scale-[1.02] hover:shadow-purple-500/25 active:scale-95' 
+                                        : 'bg-stone-200 dark:bg-stone-700 text-stone-400 dark:text-stone-500'
+                                    }`}
+                                >
+                                    🚀 Mulai Analisis {hasWhatsApp && hasInstagram ? 'Multi-Platform' : 'Chat'}
+                                </Button>
+                            </div>
+
+                            <p className="text-[10px] text-stone-400 text-center">Chat kamu hanya diproses sementara selama sesi ini. Tidak disimpan permanen.</p>
+                        </div>
                     </div>
                 </div>
-            </div>
-            <Footer setAppState={setAppState} />
-        </Layout>
-    );
+                <Footer setAppState={setAppState} />
+            </Layout>
+        );
+    };
 
     const renderInsights = () => {
         if (!chatData || !analysis) return null;
@@ -1803,72 +1967,6 @@ const App: React.FC = () => {
                 <div className="absolute inset-0 pointer-events-none z-0 bg-noise opacity-30 mix-blend-overlay fixed"></div>
                 <div className="fixed top-4 right-4 z-50"><ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} /></div>
 
-                {/* Fixed Top-Left Online Indicator */}
-                <div className="fixed top-4 left-4 z-50">
-                    <div className="relative group">
-                        <button
-                            onClick={() => setShowStatsPopup(!showStatsPopup)}
-                            onMouseEnter={() => setShowStatsPopup(true)}
-                            onMouseLeave={() => setShowStatsPopup(false)}
-                            className="p-2 rounded-full bg-white/50 dark:bg-stone-800/50 hover:bg-white dark:hover:bg-stone-700 transition-all text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-stone-700 shadow-sm flex items-center justify-center relative backdrop-blur-md"
-                        >
-                            <Users size={18} className={isConnected && globalPresence.onlineCount > 0 ? "text-green-500" : "text-stone-400"} />
-                            {isConnected && globalPresence.onlineCount > 0 && (
-                                <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500 text-[8px] text-white justify-center items-center flex">{globalPresence.onlineCount}</span>
-                                </span>
-                            )}
-                        </button>
-
-                        <AnimatePresence>
-                            {showStatsPopup && (
-                                <motion.div
-                                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                    className="absolute top-full left-0 mt-3 w-56 bg-white dark:bg-stone-900 rounded-2xl shadow-xl border border-stone-200 dark:border-stone-800 p-5 z-50 transform origin-top-left"
-                                >
-                                    <div className="flex items-center justify-between mb-4 border-b border-stone-100 dark:border-stone-800 pb-3">
-                                        <div className="flex items-center gap-2">
-                                            <div className="relative">
-                                                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-                                            </div>
-                                            <span className="text-xs font-bold text-stone-700 dark:text-stone-200 uppercase tracking-wider">Live Users</span>
-                                        </div>
-                                        <span className="text-[10px] font-mono text-stone-400">{isConnected ? 'ONLINE' : 'OFFLINE'}</span>
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-xs text-stone-600 dark:text-stone-400 flex items-center gap-2"><Sparkles size={12} className="text-purple-400" /> Landing Page</span>
-                                            <span className="text-xs font-bold font-mono bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded text-stone-600 dark:text-stone-300">{globalStats.landing}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-xs text-stone-600 dark:text-stone-400 flex items-center gap-2"><Zap size={12} className="text-amber-400" /> Creating Recap</span>
-                                            <span className="text-xs font-bold font-mono bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded text-stone-600 dark:text-stone-300">{globalStats.creating}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-xs text-stone-600 dark:text-stone-400 flex items-center gap-2"><BookOpen size={12} className="text-pink-400" /> Reading Result</span>
-                                            <span className="text-xs font-bold font-mono bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded text-stone-600 dark:text-stone-300">{globalStats.result}</span>
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-4 pt-3 border-t border-stone-100 dark:border-stone-800 flex justify-between items-center">
-                                        <span className="text-[10px] text-stone-400 font-medium">Total Online</span>
-                                        <span className="text-sm font-bold text-green-600 dark:text-green-400 font-mono">{globalStats.total}</span>
-                                    </div>
-
-                                    {/* Arrow */}
-                                    <div className="absolute -top-1.5 left-3 w-3 h-3 bg-white dark:bg-stone-900 border-t border-l border-stone-200 dark:border-stone-800 transform rotate-45"></div>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
-                </div>
-
-                {/* Realtime Toast Notifications for Join/Leave */}
-                <PresenceToast />
 
                 {showHighlight && <StoryHighlight chatData={chatData} analysisResult={analysis} onComplete={() => setShowHighlight(false)} />}
                 {showPDFGenerator && <PDFGenerator chatData={chatData} analysis={analysis} onClose={() => { setShowPDFGenerator(false); updateMyStatus('reading'); }} theme={isDarkMode ? 'dark' : 'pastel'} />}
@@ -1884,6 +1982,66 @@ const App: React.FC = () => {
                 {/* --- BAGIAN 1: PEMBUKA (Header Emosional & Overview) --- */}
                 <div className="pt-20 pb-12 px-4 relative z-10">
                     <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="max-w-3xl mx-auto text-center">
+
+                        {/* Platform Source Indicator */}
+                        {(() => {
+                            const waCount = chatData.messages.filter(m => m.platform === 'whatsapp').length;
+                            const igCount = chatData.messages.filter(m => m.platform === 'instagram').length;
+                            const isMulti = waCount > 0 && igCount > 0;
+                            const waOnly = waCount > 0 && igCount === 0;
+                            const igOnly = igCount > 0 && waCount === 0;
+                            const noTag = waCount === 0 && igCount === 0; // fallback: WA only (old data)
+
+                            return (
+                                <div className="mb-5 flex justify-center">
+                                    <motion.div
+                                        initial={{ opacity: 0, scale: 0.9 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        transition={{ delay: 0.1 }}
+                                        className="inline-flex items-center gap-2 px-4 py-2 bg-white/60 dark:bg-stone-900/60 backdrop-blur-md rounded-2xl border border-white/50 dark:border-stone-700/50 shadow-sm"
+                                    >
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500 mr-1">Sumber Chat</span>
+                                        
+                                        {/* WhatsApp badge */}
+                                        {(waOnly || isMulti || noTag) && (
+                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                                                <span className="text-sm">💬</span>
+                                                WhatsApp
+                                                {(isMulti || waOnly) && waCount > 0 && (
+                                                    <span className="ml-1 opacity-70 font-normal">{waCount.toLocaleString()} pesan</span>
+                                                )}
+                                                {noTag && (
+                                                    <span className="ml-1 opacity-70 font-normal">{chatData.totalMessages.toLocaleString()} pesan</span>
+                                                )}
+                                            </span>
+                                        )}
+
+                                        {/* Merge divider */}
+                                        {isMulti && (
+                                            <span className="text-stone-300 dark:text-stone-600 font-bold">+</span>
+                                        )}
+
+                                        {/* Instagram badge */}
+                                        {(igOnly || isMulti) && (
+                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-pink-500/15 text-pink-700 dark:text-pink-400 border border-pink-500/30">
+                                                <span className="text-sm">📸</span>
+                                                Instagram
+                                                {igCount > 0 && (
+                                                    <span className="ml-1 opacity-70 font-normal">{igCount.toLocaleString()} pesan</span>
+                                                )}
+                                            </span>
+                                        )}
+
+                                        {/* Multi-platform combined label */}
+                                        {isMulti && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/20 ml-1">
+                                                🔀 Digabung
+                                            </span>
+                                        )}
+                                    </motion.div>
+                                </div>
+                            );
+                        })()}
 
                         {/* Adaptive Participant Header */}
                         <div className="mb-6 flex justify-center">
@@ -2288,18 +2446,48 @@ const App: React.FC = () => {
 
                             <p className="text-xs text-stone-400 mb-8">Percakapan tidak selalu berakhir dengan jelas. Tapi setiap kata yang pernah dikirim tetap menjadi bagian dari cerita yang pernah ada.</p>
 
-                            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                                <Button variant="secondary" onClick={() => setAppState(AppState.CHAT)} className="shadow-md">
-                                    <span className="flex items-center gap-2"><MessageCircle size={18} /> Diskusi Lebih Dalam</span>
-                                </Button>
+                            <motion.div 
+                                onViewportEnter={() => setIsBottomInView(true)}
+                                onViewportLeave={() => setIsBottomInView(false)}
+                                viewport={{ margin: "0px" }}
+                                className="flex flex-col sm:flex-row gap-4 justify-center relative min-h-[50px]"
+                            >
+                                {isBottomInView ? (
+                                    <motion.button
+                                        layoutId="chat-fab-morph"
+                                        onClick={() => setAppState(AppState.CHAT)}
+                                        className="px-6 py-3 bg-white dark:bg-stone-800 text-stone-800 dark:text-stone-100 rounded-xl shadow-md border border-stone-200 dark:border-stone-700 flex items-center justify-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-700 transition-colors cursor-pointer"
+                                    >
+                                        <MessageCircle size={18} /> Diskusi Lebih Dalam
+                                    </motion.button>
+                                ) : (
+                                    <div className="w-[200px]" /> /* Placeholder to prevent layout shift */
+                                )}
                                 <Button variant="primary" onClick={() => window.location.reload()}>
                                     <span className="flex items-center gap-2"><RefreshCw size={18} /> Analisis Chat Lain</span>
                                 </Button>
-                            </div>
+                            </motion.div>
                         </div>
                     </motion.section>
 
                 </div>
+
+                {/* FAB / Floating Button Morphing Logic */}
+                <AnimatePresence>
+                    {!isBottomInView && (
+                        <motion.button
+                            layoutId="chat-fab-morph"
+                            onClick={() => setAppState(AppState.CHAT)}
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.8 }}
+                            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                            className="fixed bottom-8 right-8 z-[60] w-14 h-14 bg-pastel-primary text-white rounded-full shadow-xl shadow-pastel-primary/30 flex items-center justify-center hover:scale-110 active:scale-95 cursor-pointer"
+                        >
+                            <MessageCircle size={24} />
+                        </motion.button>
+                    )}
+                </AnimatePresence>
 
                 <Footer setAppState={setAppState} />
             </div>
@@ -2349,30 +2537,30 @@ const App: React.FC = () => {
 
                 {conversation.map((msg, idx) => (
                     <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
+                        initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
                         key={idx}
                         className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
-                        <div className={`flex max-w-[90%] md:max-w-[75%] gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                        <div className={`flex max-w-[92%] md:max-w-[80%] gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
 
                             {/* Avatar */}
-                            <div className={`w-8 h-8 rounded-full flex shrink-0 items-center justify-center border border-white/10 shadow-sm mt-auto ${msg.role === 'user' ? 'bg-stone-200 dark:bg-stone-700' : 'bg-gradient-to-br from-pastel-primary to-purple-400'}`}>
+                            <div className={`w-8 h-8 rounded-full flex shrink-0 items-center justify-center border border-white/20 shadow-sm mt-1 ${msg.role === 'user' ? 'bg-stone-200 dark:bg-stone-700' : 'bg-gradient-to-br from-pastel-primary to-purple-500'}`}>
                                 {msg.role === 'user' ? <User size={14} className="text-stone-500 dark:text-stone-300" /> : <Bot size={14} className="text-white" />}
                             </div>
 
                             {/* Bubble */}
                             <div
                                 style={{ fontSize: `${chatFontSize}px` }}
-                                className={`p-4 md:p-5 shadow-sm relative group transition-all ${msg.role === 'user'
-                                    ? 'bg-stone-800 text-white rounded-2xl rounded-tr-sm'
-                                    : 'bg-white dark:bg-stone-800 text-stone-800 dark:text-stone-100 border border-stone-100 dark:border-stone-700 rounded-2xl rounded-tl-sm'
+                                className={`px-5 py-4 shadow-sm relative group transition-all ${msg.role === 'user'
+                                    ? 'bg-stone-900 dark:bg-stone-700 text-white rounded-[24px] rounded-tr-[4px]'
+                                    : 'bg-white dark:bg-stone-800 text-stone-800 dark:text-stone-100 border border-stone-200 dark:border-stone-700 rounded-[24px] rounded-tl-[4px] shadow-sm hover:shadow-md'
                                     }`}
                             >
                                 {msg.role === 'model' ? <MarkdownMessage text={msg.text} /> : <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>}
 
                                 {/* Timestamp (Fake for now or could use real if tracked) */}
-                                <div className={`text-[10px] mt-2 opacity-0 group-hover:opacity-50 transition-opacity ${msg.role === 'user' ? 'text-stone-300 text-right' : 'text-stone-400'}`}>
+                                <div className={`text-[10px] mt-2 opacity-0 group-hover:opacity-60 transition-opacity ${msg.role === 'user' ? 'text-stone-400 text-right' : 'text-stone-400'}`}>
                                     {msg.role === 'user' ? 'You' : 'ABIA'}
                                 </div>
                             </div>
@@ -2889,6 +3077,13 @@ const App: React.FC = () => {
     return (
         <>
             <SEO {...seoMetadata} />
+            <SettingsModal
+                isOpen={showSettingsModal}
+                onClose={() => setShowSettingsModal(false)}
+                onSave={handleSaveSettings}
+                currentApiKeys={apiKeys}
+                currentStrategy={readingStrategy}
+            />
             <AnimatePresence mode="wait">
                 <motion.div key={appState} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="min-h-screen">
                     {appState === AppState.LANDING && renderLanding()}

@@ -23,11 +23,11 @@ export const ScrollReveal: React.FC<ScrollRevealProps> = ({
 
     const getInitialPosition = () => {
         switch (direction) {
-            case 'up': return { y: distance, x: 0 };
-            case 'down': return { y: -distance, x: 0 };
-            case 'left': return { x: distance, y: 0 };
-            case 'right': return { x: -distance, y: 0 };
-            default: return { y: distance, x: 0 };
+            case 'up': return { y: 15, x: 0 }; // Reduced from 30
+            case 'down': return { y: -15, x: 0 };
+            case 'left': return { x: 15, y: 0 };
+            case 'right': return { x: -15, y: 0 };
+            default: return { y: 15, x: 0 };
         }
     };
 
@@ -43,7 +43,7 @@ export const ScrollReveal: React.FC<ScrollRevealProps> = ({
                 }}
                 initial="hidden"
                 animate={isInView ? "visible" : "hidden"}
-                transition={{ duration: 0.8, delay: delay, ease: [0.25, 0.46, 0.45, 0.94] }}
+                transition={{ duration: 0.3, delay: delay }}
             >
                 {children}
             </motion.div>

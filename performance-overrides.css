@@ -1,0 +1,46 @@
+/* ========================================
+   PERFORMANCE OPTIMIZATIONS & ACCESSIBILITY
+   Safe optimizations that preserve UI design and aesthetics
+   ======================================== */
+
+/* GPU acceleration for heavy UI components */
+.gpu-accelerate {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* Blur effect optimization */
+.blur-optimization {
+  filter: blur(100px);
+  will-change: transform;
+}
+
+/* Gradient performance optimization */
+.gradient-optimize {
+  background-attachment: scroll;
+}
+
+/* Optimize fixed position elements */
+.fixed-optimize {
+  will-change: transform;
+}
+
+/* Respect user preference for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  
+  .animate-ping,
+  .animate-pulse,
+  .animate-spin,
+  .animate-bounce {
+    animation: none !important;
+  }
+}

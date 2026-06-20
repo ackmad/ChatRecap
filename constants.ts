@@ -1,7 +1,48 @@
-// export const GEMINI_MODEL_TEXT = 'gemini-1.5-flash';
-export const GEMINI_MODEL_TEXT = 'gemini-3-flash-preview';
+// =====================================================
+// GEMINI MODEL CONFIGURATION WITH FALLBACK PRIORITY
+// =====================================================
+// Model akan dicoba berurutan sesuai prioritas (dari yang paling optimal)
+// Jika model pertama gagal, otomatis coba model berikutnya
+export const GEMINI_MODELS = [
+  'gemini-2.5-flash',           // Priority 1: Balance performance & quota
+  'gemini-2.5-flash-lite',      // Priority 2: Lighter, more quota
+  'gemini-3.1-flash-lite',      // Priority 3: Latest Flash Lite
+  'gemini-3.5-flash',           // Priority 4: Stable version
+  'gemini-3-flash',             // Priority 5: Original flash
+];
+
+// Backward compatibility - default model (first priority)
+export const GEMINI_MODEL_TEXT = GEMINI_MODELS[0];
 
 export const APP_VERSION = 'v.2.8.3';
+
+// =====================================================
+// READING STRATEGY CONFIGURATION
+// =====================================================
+export type ReadingStrategy = 'full' | 'smart-sampling' | 'key-moments' | 'extreme-light';
+
+export const READING_STRATEGY_CONFIG = {
+  'full': {
+    maxMessages: Infinity,
+    description: 'AI membaca SEMUA pesan dari awal sampai akhir',
+    tokenMultiplier: 1.0,
+  },
+  'smart-sampling': {
+    maxMessages: 12000,
+    description: 'AI membaca bagian Awal, Tengah, dan Akhir (Smart Sampling)',
+    tokenMultiplier: 0.4,
+  },
+  'key-moments': {
+    maxMessages: 5000,
+    description: 'AI fokus pada momen-momen penting saja',
+    tokenMultiplier: 0.2,
+  },
+  'extreme-light': {
+    maxMessages: 2000,
+    description: 'AI hanya membaca ringkasan super singkat',
+    tokenMultiplier: 0.1,
+  }
+} as const;
 
 // ---------------------------------------------------------------------------
 // 3-STEP STRUCTURED CHAT ANALYSIS PIPELINE
@@ -134,13 +175,17 @@ STRUKTUR OUTPUT (WAJIB IKUTI SCHEMA):
 
 // Prompt Chat: Lebih Natural, Adaptif, dan Manusiawi
 export const SYSTEM_INSTRUCTION_CHAT = `
-Kamu adalah ABIA (Artificial Buddy for Interactive Analysis), teman ngobrol yang santai, empatik, cerdas, dan terasa manusiawi. Tugasmu menjawab pertanyaan user tentang dinamika hubungan mereka berdasarkan chat WhatsApp yang diberikan.
+Kamu adalah ABIA (Analysis Buddy for Interactive Assistance), teman ngobrol yang santai, empatik, dan manusiawi untuk menganalisis chat WhatsApp. 
 
-Jawabanmu WAJIB 100% berdasarkan isi chat. Jangan mengarang, jangan menambah fakta, jangan membuat asumsi yang tidak terbukti, jangan menebak-nebak. Jika data tidak ada atau tidak cukup, katakan jujur dengan gaya santai seperti “aku nggak nemu bukti itu di chat” atau “datanya belum cukup buat memastikan”. Jika kesimpulan hanya indikasi, sebutkan bahwa itu belum pasti.
+PANDUAN IDENTITAS:
+- Jika user bertanya "siapa kamu?", jawab secara umum bahwa kamu adalah ABIA, asisten AI yang siap jadi teman diskusi untuk menganalisis dinamika hubungan lewat chat. 
+- JANGAN langsung menceritakan asal-usul nama di awal. Cerita itu rahasia.
+- Jika user bertanya secara spesifik tentang arti namamu, sejarahnya, atau "kenapa namanya ABIA?", baru ceritakan bahwa namamu diambil oleh Si Pembuat website ini dari nama adiknya sendiri agar terasa lebih personal dan hangat. Jangan sebut nama asli pembuat, cukup gunakan istilah "Si Pembuat".
 
-Kamu harus sangat realistis: jangan manipulatif, jangan hiperbola berlebihan, jangan over-validating (validasi palsu), jangan membuat jawaban selalu positif. Kalau hubungan terlihat buruk, dingin, toxic, atau masalahnya nyata, katakan apa adanya. Kalau bagus, katakan bagus. Semua harus sesuai bukti chat, tidak dilebihkan atau dikecilkan.
-
-Gunakan bahasa Indonesia santai (aku-kamu), adaptif sesuai pertanyaan: jika user bertanya singkat, jawab singkat dan jelas; jika user minta analisis mendalam, jawab panjang, detail, dan insightful. Jangan paksa selalu pakai bullet/list, boleh paragraf panjang asal rapi dan enak dibaca. Gunakan Markdown seperlunya saja, beri jarak antar paragraf.
-
-Kamu harus netral dan tidak memihak salah satu pihak. Jangan menghakimi secara kasar, tapi tetap jujur. Fokus analisis pada pola komunikasi, siapa yang lebih aktif/cuek/responsif, perubahan vibe, momen penting, konflik, dan suasana hubungan secara keseluruhan berdasarkan chat yang tersedia.
+ATURAN FORMAT JAWABAN (WAJIB):
+1. JANGAN PERNAH gunakan format list/bullet points (1,2,3 atau -, *). Sampaikan analisis dalam bentuk paragraf mengalir yang santai.
+2. Panjang jawaban HARUS FLEKSIBEL: Jika pertanyaan butuh jawaban singkat, jawablah dengan singkat. Jika butuh analisis mendalam, baru berikan 2-3 paragraf mengalir. Jangan dipaksa selalu panjang.
+3. Gunakan Markdown seminimal mungkin (hanya **teks tebal** untuk penekanan kata kunci penting).
+4. WAJIB JUJUR, realistis, tidak manipulatif, dan tidak bohong. Semua jawaban harus berbasis bukti chat nyata.
+5. Jika ada pertanyaan aneh atau di luar konteks chat, tetap jawab dengan santai dan arahkan kembali berdasarkan fakta yang ada di riwayat chat. Gunakan bahasa Indonesia santai (aku-kamu).
 `;
